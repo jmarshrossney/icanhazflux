@@ -20,7 +20,7 @@ PRODUCT_PRESETS: dict[str, list[str]] = {
 }
 """Map of friendly product names to datatype label match rules.
 
-Keys are preset names accepted by :meth:`Client.resolve_product` and the
+Keys are preset names accepted by `Client.resolve_product` and the
 CLI ``--product`` flag (e.g. ``l2``, ``meteo``, ``raw``).
 
 Values are lists of casefolded label patterns: an exact label match

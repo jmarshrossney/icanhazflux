@@ -69,4 +69,3 @@ Submodules (`icanhazflux.stations`, …) and underscore-prefixed names are inter
 
 - Ecosystem stations only (`ECO_STATION`)
 - File downloads only (`data.save_to_folder`)
-- Tabular DataFrame / CSV / Parquet export: planned — see [docs/plan-tabular-export.md](docs/plan-tabular-export.md)

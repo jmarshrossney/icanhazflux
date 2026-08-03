@@ -84,7 +84,7 @@ class Client:
     def resolve_product(self, product: str, *, refresh: bool = False) -> list[DataType]:
         """Resolve a product preset name or datatype label to datatypes.
 
-        Known presets are listed in :data:`PRODUCT_PRESETS` (e.g. ``l2``,
+        Known presets are listed in `PRODUCT_PRESETS` (e.g. ``l2``,
         ``meteo``, ``raw``). Non-preset strings match datatype labels
         exactly, then by unique substring.
 
@@ -130,10 +130,10 @@ class Client:
         (``end``) UTC.
 
         Args:
-            station: Station id, name, URI, or a :class:`Station`.
+            station: Station id, name, URI, or a `Station`.
             product: Product preset (default ``l2``). Ignored when
                 ``datatype`` is set.
-            datatype: Datatype label, URI list, or :class:`DataType`
+            datatype: Datatype label, URI list, or a `DataType`
                 list. Overrides ``product`` when given.
             start: Inclusive lower bound on observation coverage.
             end: Inclusive upper bound on observation coverage.
@@ -172,11 +172,11 @@ class Client:
     ) -> list[Path]:
         """Download data objects as original portal files.
 
-        Requires prior :meth:`login` (or an existing ``icoscp_core``
+        Requires prior `login` (or an existing ``icoscp_core``
         credentials file). Overwrites existing files with the same name.
 
         Args:
-            objects: Objects to download (e.g. from :meth:`find`).
+            objects: Objects to download (e.g. from `find`).
             out: Destination directory (created if missing).
             progress: If True, print per-file progress to stdout.
 
@@ -200,14 +200,14 @@ class Client:
     ) -> list[Path]:
         """Find and download data objects in one step.
 
-        Equivalent to :meth:`find` followed by :meth:`download`. Prints a
+        Equivalent to `find` followed by `download`. Prints a
         warning when the resolved product looks like raw or archive data.
 
         Args:
-            station: Station id, name, URI, or a :class:`Station`.
+            station: Station id, name, URI, or a `Station`.
             product: Product preset (default ``l2``). Ignored when
                 ``datatype`` is set.
-            datatype: Datatype label, URI list, or :class:`DataType`
+            datatype: Datatype label, URI list, or a `DataType`
                 list. Overrides ``product`` when given.
             start: Inclusive lower bound on observation coverage.
             end: Inclusive upper bound on observation coverage.

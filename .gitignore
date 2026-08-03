@@ -17,3 +17,5 @@ site/
 
 # notes
 notes/
+
+.coverage
