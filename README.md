@@ -15,13 +15,17 @@ uv sync
 
 ## CLI
 
+Typical workflow: discover a station with `sites`, inspect its data objects
+with `objects`, then download them with `download`. Use `datatypes` when you
+need to choose a product preset or exact datatype label.
+
 ```bash
 icanhazflux login                          # once, interactive
 icanhazflux sites --search hylte
-icanhazflux types                          # presets + eco datatypes
-icanhazflux list SE-Htm --product l2
-icanhazflux get  SE-Htm --product l2 --out ./data
-icanhazflux get  SE-Htm --product raw --start 2024-01-01 --end 2024-01-07 -y
+icanhazflux datatypes                       # presets + eco datatypes
+icanhazflux objects SE-Htm --product l2
+icanhazflux download SE-Htm --product l2 --out ./data
+icanhazflux download SE-Htm --product raw --start 2024-01-01 --end 2024-01-07 -y
 ```
 
 ### Product presets

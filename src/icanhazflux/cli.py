@@ -87,8 +87,8 @@ def sites_cmd(
     console.print(f"[dim]{len(stations)} station(s)[/dim]")
 
 
-@app.command("types")
-def types_cmd(
+@app.command("datatypes")
+def datatypes_cmd(
     search: str | None = typer.Option(
         None, "--search", "-s", help="Filter by label/project"
     ),
@@ -162,8 +162,8 @@ def _resolve_query(
     return c, st, resolved_types, objs
 
 
-@app.command("list")
-def list_cmd(
+@app.command("objects")
+def objects_cmd(
     site: str = typer.Argument(..., help="Station id, name, or URI (e.g. SE-Htm)"),
     product: str | None = typer.Option(
         None,
@@ -213,8 +213,8 @@ def list_cmd(
     console.print(f"[dim]{len(objs)} object(s), {_format_size(total)} total[/dim]")
 
 
-@app.command("get")
-def get_cmd(
+@app.command("download")
+def download_cmd(
     site: str = typer.Argument(..., help="Station id, name, or URI (e.g. SE-Htm)"),
     product: str | None = typer.Option(
         None,

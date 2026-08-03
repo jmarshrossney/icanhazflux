@@ -62,14 +62,14 @@ def test_sites_lists_stations(monkeypatch, stations):
     assert "Hyltemossa" in result.stdout
 
 
-def test_list_unknown_site(monkeypatch):
+def test_objects_unknown_site(monkeypatch):
     fake = FakeClient(stations=[_station()])
     monkeypatch.setattr("icanhazflux.cli._client", lambda: fake)
     monkeypatch.setattr(
         "icanhazflux.cli.resolve_product",
         lambda key, refresh=False: [],
     )
-    result = runner.invoke(app, ["list", "ZZ-Zzz"])
+    result = runner.invoke(app, ["objects", "ZZ-Zzz"])
     assert result.exit_code == 1
     assert (
         "No ecosystem station" in result.stdout
@@ -77,7 +77,7 @@ def test_list_unknown_site(monkeypatch):
     )
 
 
-def test_list_success(monkeypatch, sample_objects, datatypes):
+def test_objects_success(monkeypatch, sample_objects, datatypes):
     from icanhazflux.types import match_product
 
     fake = FakeClient(stations=[_station()], objects=sample_objects)
@@ -86,7 +86,7 @@ def test_list_success(monkeypatch, sample_objects, datatypes):
         "icanhazflux.cli.resolve_product",
         lambda key, refresh=False: match_product(datatypes, key),
     )
-    result = runner.invoke(app, ["list", "SE-Htm", "--product", "l2"])
+    result = runner.invoke(app, ["objects", "SE-Htm", "--product", "l2"])
     assert result.exit_code == 0
     assert "SE-Htm" in result.stdout
     assert "ICOSETC_SE-Htm_FLUXNET_HH.zip" in result.stdout
