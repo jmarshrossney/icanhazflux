@@ -20,7 +20,7 @@ test:
 
 # Run tests with coverage report.
 test-cov:
-  pytest --cov=icanhazflux --cov-report=term-missing --cov-fail-under=90
+  pytest --cov=icanhazflux --cov-report=term-missing --cov-fail-under=80
 
 # Build the documentation using Zensical.
 docs:

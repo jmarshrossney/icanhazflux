@@ -39,9 +39,9 @@ icanhazflux download SE-Htm --product raw --start 2024-01-01 --end 2024-01-07 -y
 | `raw`     | Eddy flux raw daily archives      |
 | `archive` | ETC L2 ARCHIVE                    |
 
-Use `--datatype TEXT` for a free-text label match instead of a preset.
+Use `--datatype TEXT` to match a datatype label directly instead of using a preset: exact label first, then a unique substring match. It never consults the preset table, so `--datatype raw` matches labels containing "raw" rather than the `raw` preset.
 
-Station metadata and datatypes are cached under `~/.cache/icanhazflux/` (7-day TTL). Pass `--refresh` to reload.
+Station metadata and datatypes are cached under `~/.cache/icanhazflux/` (7-day TTL). Pass `--refresh` to reload, or `icanhazflux cache clear` to delete the caches (`icanhazflux cache path` prints the directory).
 
 ## Python API
 

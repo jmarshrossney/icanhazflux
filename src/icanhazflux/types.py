@@ -127,6 +127,25 @@ def list_datatypes(
     ]
 
 
+def match_label(types: list[DataType], query: str) -> list[DataType]:
+    """Resolve an exact or unique-substring label match (pure, package-internal).
+
+    Never consults `PRODUCT_PRESETS`; use `match_product` for preset support.
+    """
+    key = query.strip().casefold()
+
+    exact = [t for t in types if t.label.casefold() == key]
+    if exact:
+        return exact
+
+    partial = [t for t in types if key in t.label.casefold()]
+    if len(partial) == 1:
+        return partial
+    if len(partial) > 1:
+        raise AmbiguousDataType(query, partial)
+    raise DataTypeNotFound(f"No ecosystem datatype matching {query!r}")
+
+
 def match_product(types: list[DataType], product: str) -> list[DataType]:
     """Resolve preset/label against an in-memory list (pure, package-internal)."""
     key = product.strip().casefold()
@@ -149,21 +168,17 @@ def match_product(types: list[DataType], product: str) -> list[DataType]:
             raise DataTypeNotFound(f"Preset {product!r} matched no ecosystem datatypes")
         return uniq
 
-    exact = [t for t in types if t.label.casefold() == key]
-    if exact:
-        return exact
-
-    partial = [t for t in types if key in t.label.casefold()]
-    if len(partial) == 1:
-        return partial
-    if len(partial) > 1:
-        raise AmbiguousDataType(product, partial)
-    raise DataTypeNotFound(f"No ecosystem datatype matching {product!r}")
+    return match_label(types, product)
 
 
 def resolve_product(product: str, *, refresh: bool = False) -> list[DataType]:
     """Resolve a product preset or label. Prefer ``Client.resolve_product``."""
     return match_product(list_datatypes(refresh=refresh), product)
+
+
+def resolve_label(query: str, *, refresh: bool = False) -> list[DataType]:
+    """Resolve a datatype label, never consulting presets. Package-internal."""
+    return match_label(list_datatypes(refresh=refresh), query)
 
 
 def _is_sensitive_product(types: list[DataType]) -> bool:

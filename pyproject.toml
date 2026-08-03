@@ -11,11 +11,25 @@ authors = [
     { name = "jmarshrossney", email = "17361029+jmarshrossney@users.noreply.github.com" }
 ]
 requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = ["ICOS", "eddy covariance", "flux", "fluxnet", "carbon", "ecosystem"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Atmospheric Science",
+]
 dependencies = [
     "icoscp-core>=0.3.12",
     "rich>=15.0.0",
     "typer>=0.27.0",
 ]
+
+[project.urls]
+Homepage = "https://jmarshrossney.github.io/icanhazflux"
+Repository = "https://github.com/jmarshrossney/icanhazflux"
 
 [project.scripts]
 icanhazflux = "icanhazflux:main"

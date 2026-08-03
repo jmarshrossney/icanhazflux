@@ -5,6 +5,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from . import cache
 from .client import Client
 from .stations import AmbiguousStation, StationNotFound
 from .types import (
@@ -13,9 +14,14 @@ from .types import (
     AmbiguousDataType,
     DataTypeNotFound,
     _is_sensitive_product,
+    match_product,
+    resolve_label,
     resolve_product,
 )
 from .version import __version__
+
+# Prompt before downloading more than this. Module-level so tests can patch it.
+_CONFIRM_THRESHOLD_BYTES = 50 * 1024 * 1024
 
 app = typer.Typer(
     name="icanhazflux",
@@ -96,16 +102,22 @@ def datatypes_cmd(
     refresh: bool = typer.Option(False, "--refresh", help="Bust local datatype cache"),
 ) -> None:
     """List ecosystem datatypes and product presets."""
-    if search is None:
-        console.print("[bold]Product presets[/bold]")
-        for name, needles in PRODUCT_PRESETS.items():
-            shown = ", ".join(n.removeprefix("~") for n in needles)
-            console.print(f"  {name:10} → {shown}")
-        console.print()
-
     types = _client().datatypes(search=search, refresh=refresh)
     if not types:
         _die("No datatypes matched.")
+
+    if search is None:
+        # Unfiltered, so `types` is the full catalog and presets can be
+        # resolved to real labels without a second fetch.
+        console.print("[bold]Product presets[/bold]")
+        for name in PRODUCT_PRESETS:
+            try:
+                shown = ", ".join(t.label for t in match_product(types, name))
+            except DataTypeNotFound:
+                shown = "[dim](no match)[/dim]"
+            console.print(f"  {name:10} → {shown}")
+        console.print()
+
     table = Table(show_header=True, header_style="bold")
     table.add_column("Level", width=5)
     table.add_column("Access", width=6)
@@ -132,6 +144,7 @@ def _resolve_query(
     end: str | None,
     limit: int,
     refresh: bool,
+    include_deprecated: bool = False,
 ):
     c = _client()
     try:
@@ -142,9 +155,12 @@ def _resolve_query(
         lines = "\n".join(f"  {m.id:10} {m.name}" for m in e.matches)
         _die(f"{e}\n{lines}")
 
-    key = datatype if datatype is not None else (product or "l2")
+    # --datatype is a label match only; presets belong to --product.
     try:
-        resolved_types = resolve_product(key, refresh=refresh)
+        if datatype is not None:
+            resolved_types = resolve_label(datatype, refresh=refresh)
+        else:
+            resolved_types = resolve_product(product or "l2", refresh=refresh)
     except DataTypeNotFound as e:
         _die(str(e))
     except AmbiguousDataType as e:
@@ -158,6 +174,7 @@ def _resolve_query(
         start=start,
         end=end,
         limit=limit,
+        include_deprecated=include_deprecated,
         refresh=refresh,
     )
     return c, st, resolved_types, objs
@@ -173,7 +190,11 @@ def objects_cmd(
         help=f"Preset: {', '.join(PRODUCT_PRESETS)} (default: l2)",
     ),
     datatype: str | None = typer.Option(
-        None, "--datatype", "-d", help="Datatype label substring (overrides --product)"
+        None,
+        "--datatype",
+        "-d",
+        help="Exact datatype label or unique substring; never a preset. "
+        "Overrides --product.",
     ),
     start: str | None = typer.Option(
         None, "--start", help="Obs start lower bound (YYYY-MM-DD)"
@@ -182,11 +203,14 @@ def objects_cmd(
         None, "--end", help="Obs end upper bound (YYYY-MM-DD)"
     ),
     limit: int = typer.Option(1000, "--limit", "-n", help="Max objects to return"),
+    include_deprecated: bool = typer.Option(
+        False, "--include-deprecated", help="Include superseded object versions"
+    ),
     refresh: bool = typer.Option(False, "--refresh", help="Bust metadata caches"),
 ) -> None:
     """List available data objects for a station (no auth)."""
     _, st, resolved_types, objs = _resolve_query(
-        site, product, datatype, start, end, limit, refresh
+        site, product, datatype, start, end, limit, refresh, include_deprecated
     )
     console.print(f"[bold]{st.id}[/bold] {st.name}  ({st.uri})")
     console.print("Types: " + ", ".join(t.label for t in resolved_types))
@@ -224,7 +248,11 @@ def download_cmd(
         help=f"Preset: {', '.join(PRODUCT_PRESETS)} (default: l2)",
     ),
     datatype: str | None = typer.Option(
-        None, "--datatype", "-d", help="Datatype label substring (overrides --product)"
+        None,
+        "--datatype",
+        "-d",
+        help="Exact datatype label or unique substring; never a preset. "
+        "Overrides --product.",
     ),
     start: str | None = typer.Option(
         None, "--start", help="Obs start lower bound (YYYY-MM-DD)"
@@ -237,11 +265,14 @@ def download_cmd(
     ),
     limit: int = typer.Option(1000, "--limit", "-n", help="Max objects to download"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip size confirmation"),
+    include_deprecated: bool = typer.Option(
+        False, "--include-deprecated", help="Include superseded object versions"
+    ),
     refresh: bool = typer.Option(False, "--refresh", help="Bust metadata caches"),
 ) -> None:
     """Download data objects for a station (requires login)."""
     c, st, resolved_types, objs = _resolve_query(
-        site, product, datatype, start, end, limit, refresh
+        site, product, datatype, start, end, limit, refresh, include_deprecated
     )
     console.print(f"[bold]{st.id}[/bold] {st.name}")
     console.print("Types: " + ", ".join(t.label for t in resolved_types))
@@ -255,7 +286,7 @@ def download_cmd(
     total = sum(o.size_bytes for o in objs)
     console.print(f"{len(objs)} file(s), {_format_size(total)} → {out.resolve()}")
 
-    if not yes and total > 50 * 1024 * 1024 and not typer.confirm("Continue?"):
+    if not yes and total > _CONFIRM_THRESHOLD_BYTES and not typer.confirm("Continue?"):
         raise typer.Exit(1)
 
     try:
@@ -270,6 +301,31 @@ def download_cmd(
 def version_cmd() -> None:
     """Prints the version."""
     typer.echo(f"icanhazflux version {__version__}")
+
+
+cache_app = typer.Typer(
+    help="Inspect and clear the local metadata caches.",
+    no_args_is_help=True,
+)
+app.add_typer(cache_app, name="cache")
+
+
+@cache_app.command("path")
+def cache_path_cmd() -> None:
+    """Print the local cache directory."""
+    console.print(str(cache.cache_dir()))
+
+
+@cache_app.command("clear")
+def cache_clear_cmd(
+    name: str | None = typer.Argument(
+        None, help="Cache to clear, e.g. stations or datatypes (default: all)"
+    ),
+) -> None:
+    """Delete cached station and datatype metadata."""
+    cache.clear(name)
+    target = f"{name!r} cache" if name else "all caches"
+    console.print(f"[green]Cleared {target}.[/green]")
 
 
 def main() -> None:

@@ -6,7 +6,7 @@ from icoscp_core.icos import meta
 from icoscp_core.queries.dataobjlist import DataObjectLite, Filter, TimeFilter
 
 from .stations import Station, resolve_station
-from .types import DataType, resolve_product
+from .types import DataType, list_datatypes, resolve_product
 
 
 @dataclass(frozen=True)
@@ -93,25 +93,37 @@ def _find_objects(
     limit: int = 1000,
     include_deprecated: bool = False,
     refresh: bool = False,
-) -> list[DataObject]:
+) -> tuple[list[DataType], list[DataObject]]:
+    """Resolve a query and run it. Returns the resolved datatypes and the objects.
+
+    ``datatype`` takes precedence over ``product`` when both are given.
+    Package-internal helper (not part of the public API).
+    """
     st = (
         station
         if isinstance(station, Station)
         else resolve_station(station, refresh=refresh)
     )
 
+    resolved: list[DataType] = []
     dtype_uris: list[str] | None = None
-    if product is not None:
-        resolved = resolve_product(product, refresh=refresh)
-        dtype_uris = [t.uri for t in resolved]
-    elif datatype is not None:
+    if datatype is not None:
         if isinstance(datatype, str):
             resolved = resolve_product(datatype, refresh=refresh)
             dtype_uris = [t.uri for t in resolved]
         elif datatype and isinstance(datatype[0], DataType):
-            dtype_uris = [t.uri for t in datatype]  # type: ignore[union-attr]
+            resolved = cast(list[DataType], list(datatype))
+            dtype_uris = [t.uri for t in resolved]
         else:
-            dtype_uris = list(datatype)  # type: ignore[arg-type]
+            dtype_uris = list(cast(list[str], datatype))
+            # Best-effort reverse lookup so callers can inspect the resolved
+            # types (e.g. for the raw-data warning). Unknown URIs still go to
+            # the query; they just don't contribute to that check.
+            known = {t.uri: t for t in list_datatypes(refresh=refresh)}
+            resolved = [known[u] for u in dtype_uris if u in known]
+    elif product is not None:
+        resolved = resolve_product(product, refresh=refresh)
+        dtype_uris = [t.uri for t in resolved]
 
     filters = build_time_filters(start, end)
 
@@ -123,4 +135,4 @@ def _find_objects(
         order_by="fileName",
         limit=limit,
     )
-    return [DataObject.from_lite(o) for o in objs]
+    return resolved, [DataObject.from_lite(o) for o in objs]

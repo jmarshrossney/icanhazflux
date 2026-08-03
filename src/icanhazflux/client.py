@@ -10,8 +10,10 @@ from .types import (
     _RAW_WARNING,
     PRODUCT_PRESETS,
     DataType,
+    DataTypeNotFound,
     _is_sensitive_product,
     list_datatypes,
+    match_product,
     resolve_product,
 )
 
@@ -102,13 +104,27 @@ class Client:
         """
         return resolve_product(product, refresh=refresh)
 
-    def products(self) -> dict[str, list[str]]:
-        """Return a copy of the friendly product preset map.
+    def products(self, *, refresh: bool = False) -> dict[str, list[str]]:
+        """Map each product preset to the datatype labels it currently resolves to.
+
+        Presets resolve against the live catalog, so a preset that matches
+        nothing (e.g. after a portal rename) maps to an empty list rather
+        than raising.
+
+        Args:
+            refresh: If True, bypass the local datatype cache.
 
         Returns:
-            Mapping of preset name to label match rules (internal format).
+            Mapping of preset name to matching datatype labels.
         """
-        return dict(PRODUCT_PRESETS)
+        types = list_datatypes(refresh=refresh)
+        out: dict[str, list[str]] = {}
+        for name in PRODUCT_PRESETS:
+            try:
+                out[name] = [t.label for t in match_product(types, name)]
+            except DataTypeNotFound:
+                out[name] = []
+        return out
 
     def find(
         self,
@@ -135,8 +151,10 @@ class Client:
                 ``datatype`` is set.
             datatype: Datatype label, URI list, or a `DataType`
                 list. Overrides ``product`` when given.
-            start: Inclusive lower bound on observation coverage.
-            end: Inclusive upper bound on observation coverage.
+            start: Include objects whose coverage extends past this instant.
+                Date-only values are treated as start-of-day UTC.
+            end: Include objects whose coverage begins before this instant.
+                Date-only values are treated as end-of-day UTC.
             limit: Maximum number of objects to return.
             include_deprecated: If True, include superseded versions.
             refresh: If True, bypass station/datatype caches.
@@ -150,9 +168,7 @@ class Client:
             DataTypeNotFound: Product/datatype query failed.
             AmbiguousDataType: Product/datatype query was ambiguous.
         """
-        if datatype is not None:
-            product = None
-        return _find_objects(
+        _, objs = _find_objects(
             station,
             product=product,
             datatype=datatype,
@@ -162,6 +178,7 @@ class Client:
             include_deprecated=include_deprecated,
             refresh=refresh,
         )
+        return objs
 
     def download(
         self,
@@ -209,8 +226,10 @@ class Client:
                 ``datatype`` is set.
             datatype: Datatype label, URI list, or a `DataType`
                 list. Overrides ``product`` when given.
-            start: Inclusive lower bound on observation coverage.
-            end: Inclusive upper bound on observation coverage.
+            start: Include objects whose coverage extends past this instant.
+                Date-only values are treated as start-of-day UTC.
+            end: Include objects whose coverage begins before this instant.
+                Date-only values are treated as end-of-day UTC.
             out: Destination directory (created if missing).
             limit: Maximum number of objects to download.
             refresh: If True, bypass station/datatype caches.
@@ -219,7 +238,7 @@ class Client:
         Returns:
             Paths of the saved files.
         """
-        objs = self.find(
+        types, objs = _find_objects(
             station,
             product=product,
             datatype=datatype,
@@ -228,17 +247,7 @@ class Client:
             limit=limit,
             refresh=refresh,
         )
-        if datatype is not None:
-            types = (
-                self.resolve_product(datatype)
-                if isinstance(datatype, str)
-                else [t for t in datatype if isinstance(t, DataType)]
-            )
-        elif product is not None:
-            types = self.resolve_product(product, refresh=refresh)
-        else:
-            types = []
-        if types and _is_sensitive_product(types) and progress:
+        if progress and types and _is_sensitive_product(types):
             print(_RAW_WARNING)
         return self.download(objs, out, progress=progress)
 

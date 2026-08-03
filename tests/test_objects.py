@@ -1,6 +1,9 @@
 from datetime import UTC, datetime
 
-from icanhazflux.objects import build_time_filters, parse_time
+import pytest
+
+from icanhazflux.objects import _find_objects, build_time_filters, parse_time
+from icanhazflux.types import _is_sensitive_product, match_product
 
 
 def test_parse_time_none():
@@ -54,3 +57,86 @@ def test_build_time_filters_range_overlap_semantics():
     assert by_prop["timeEnd"].value == "2024-06-01T00:00:00Z"
     assert by_prop["timeStart"].op == "<"
     assert by_prop["timeStart"].value == "2024-06-03T23:59:59Z"
+
+
+# _find_objects resolution: returns the resolved datatypes alongside the objects,
+# so callers (Client.get) can run the raw-data check without re-resolving.
+
+
+@pytest.fixture
+def patched_objects(monkeypatch, datatypes, stations, sample_objects):
+    """Stub the portal calls in icanhazflux.objects; record the query kwargs."""
+    from icanhazflux import objects as objects_mod
+
+    calls: dict = {"list_datatypes": 0, "query": None}
+
+    def fake_list_datatypes(*, refresh=False):
+        calls["list_datatypes"] += 1
+        return datatypes
+
+    def fake_list_data_objects(**kwargs):
+        calls["query"] = kwargs
+        return []
+
+    monkeypatch.setattr(objects_mod, "list_datatypes", fake_list_datatypes)
+    monkeypatch.setattr(objects_mod.meta, "list_data_objects", fake_list_data_objects)
+    monkeypatch.setattr(
+        objects_mod, "resolve_station", lambda q, refresh=False: stations[0]
+    )
+    monkeypatch.setattr(
+        objects_mod,
+        "resolve_product",
+        lambda p, refresh=False: match_product(datatypes, p),
+    )
+    return calls
+
+
+def test_find_objects_uri_list_resolves_types(patched_objects, datatypes):
+    """Regression: a list[str] of URIs must still yield resolved DataTypes.
+
+    Client.get relies on these to decide whether to print the raw-data
+    warning; previously it got an empty list and stayed silent.
+    """
+    raw = match_product(datatypes, "raw")
+    uris = [t.uri for t in raw]
+
+    types, _ = _find_objects("SE-Htm", datatype=uris)
+
+    assert [t.uri for t in types] == uris
+    assert _is_sensitive_product(types) is True
+    assert patched_objects["query"]["datatype"] == uris
+
+
+def test_find_objects_unknown_uri_still_queried(patched_objects):
+    """URIs absent from the eco catalog pass through but resolve to nothing."""
+    types, _ = _find_objects("SE-Htm", datatype=["http://example.invalid/nope"])
+
+    assert types == []
+    assert patched_objects["query"]["datatype"] == ["http://example.invalid/nope"]
+
+
+def test_find_objects_datatype_overrides_product(patched_objects, datatypes):
+    """datatype wins over product, per the documented precedence."""
+    types, _ = _find_objects("SE-Htm", product="l2", datatype="ETC L2 Meteo")
+
+    assert [t.label for t in types] == ["ETC L2 Meteo"]
+
+
+def test_find_objects_datatype_list_of_datatypes(patched_objects, datatypes):
+    meteo = match_product(datatypes, "meteo")
+    types, _ = _find_objects("SE-Htm", datatype=meteo)
+
+    assert types == meteo
+    assert patched_objects["query"]["datatype"] == [t.uri for t in meteo]
+
+
+def test_find_objects_product_preset(patched_objects):
+    types, _ = _find_objects("SE-Htm", product="l2")
+
+    assert [t.label for t in types] == ["ETC L2 Fluxnet (half-hourly)"]
+
+
+def test_find_objects_include_deprecated_passed_through(patched_objects):
+    _find_objects("SE-Htm", product="l2", include_deprecated=True)
+
+    assert patched_objects["query"]["include_deprecated"] is True

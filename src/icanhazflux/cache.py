@@ -1,4 +1,6 @@
 import json
+import os
+import tempfile
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -31,8 +33,19 @@ def load(name: str, ttl: int = DEFAULT_TTL_SECONDS) -> Any | None:
 
 
 def save(name: str, data: Any) -> None:
+    # Write-then-rename so a crash or a concurrent refresh can never leave a
+    # truncated file behind. The temp file must share a filesystem with the
+    # target for os.replace to be atomic, hence dir=path.parent.
     path = cache_path(name)
-    path.write_text(json.dumps({"ts": time.time(), "data": data}, default=str))
+    payload = json.dumps({"ts": time.time(), "data": data}, default=str)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(payload)
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
 
 
 def get_or_fetch(
@@ -53,7 +66,10 @@ def get_or_fetch(
 
 def clear(name: str | None = None) -> None:
     if name is None:
-        for path in cache_dir().glob("*.json"):
-            path.unlink(missing_ok=True)
+        root = cache_dir()
+        # Also sweep temp files left by an interrupted save.
+        for pattern in ("*.json", ".*.tmp"):
+            for path in root.glob(pattern):
+                path.unlink(missing_ok=True)
     else:
         cache_path(name).unlink(missing_ok=True)
