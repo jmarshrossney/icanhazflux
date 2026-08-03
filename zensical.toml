@@ -7,10 +7,20 @@ site_description = "Unofficial Python API and CLI for downloading ICOS ecosystem
 site_author = "Joe Marsh Rossney"
 site_url = "https://jmarshrossney.github.io/icanhazflux"
 
+nav = [
+    "index.md",
+    "cli.md",
+    "api.md",
+]
+
 repo_name = "jmarshrossney/icanhazflux"
 repo_url = "https://github.com/jmarshrossney/icanhazflux"
 
 copyright = "Copyright &copy; 2026 The authors"
+
+# These are needed for mkdocs-typer2 + termynal
+extra_css = ["assets/termynal.css"]
+extra_javascript = ["assets/termynal.js"]
 
 [project.theme]
 language = "en"
@@ -32,6 +42,7 @@ features = [
     "navigation.tracking",
     "search.highlight",
     "toc.follow",
+    "toc.integrate",
 ]
 
 [[project.theme.palette]]
@@ -85,7 +96,7 @@ combine_header_slug = true
 custom_checkbox = true
 [project.markdown_extensions.pymdownx.tilde]
 
-# Mkdocstrings
+# mkdocstrings
 # ------------
 
 [project.plugins.mkdocstrings.handlers.python]
@@ -112,3 +123,9 @@ show_source = false
 show_symbol_type_heading = true
 show_symbol_type_toc = true
 
+# mkdocs-typer2
+[project.markdown_extensions.tables]
+
+[project.markdown_extensions."mkdocs_typer2.markdown:makeExtension"]
+pretty = false
+engine = "native"
