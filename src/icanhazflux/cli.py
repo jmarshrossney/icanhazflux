@@ -15,6 +15,7 @@ from .types import (
     _is_sensitive_product,
     resolve_product,
 )
+from .version import __version__
 
 app = typer.Typer(
     name="icanhazflux",
@@ -263,6 +264,12 @@ def download_cmd(
         _die(f"Download failed: {e}")
 
     console.print(f"[green]Saved {len(paths)} file(s) to {out.resolve()}[/green]")
+
+
+@app.command("version")
+def version_cmd() -> None:
+    """Prints the version."""
+    typer.echo(f"icanhazflux version {__version__}")
 
 
 def main() -> None:

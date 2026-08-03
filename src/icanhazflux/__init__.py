@@ -13,8 +13,6 @@ Import only from this package root in application code::
 Submodules and names not listed in ``__all__`` are internal and may change.
 """
 
-from importlib.metadata import PackageNotFoundError, version
-
 from .client import Client
 from .objects import DataObject
 from .stations import AmbiguousStation, Station, StationNotFound
@@ -24,11 +22,7 @@ from .types import (
     DataType,
     DataTypeNotFound,
 )
-
-try:
-    __version__ = version("icanhazflux")
-except PackageNotFoundError:  # pragma: no cover - editable/uninstalled edge case
-    __version__ = "0.0.0+unknown"
+from .version import __version__
 
 __all__ = [
     "PRODUCT_PRESETS",
