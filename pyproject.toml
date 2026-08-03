@@ -1,0 +1,45 @@
+[build-system]
+requires = ["uv_build>=0.11.16,<0.12.0"]
+build-backend = "uv_build"
+
+[project]
+name = "icanhazflux"
+version = "0.1.0"
+description = "Unofficial CLI and Python API for ICOS ecosystem flux data (via icoscp_core)"
+readme = "README.md"
+authors = [
+    { name = "jmarshrossney", email = "17361029+jmarshrossney@users.noreply.github.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "icoscp-core>=0.3.12",
+    "typer>=0.27.0",
+]
+
+[project.scripts]
+icanhazflux = "icanhazflux:main"
+
+[dependency-groups]
+dev = [
+    "pyright>=1.1.411",
+    "pytest>=9.1.1",
+    "ruff>=0.16.0",
+    { include-group = "docs" },
+]
+docs = [
+    "mkdocstrings-python>=2.0.5",
+    "zensical>=0.0.51",
+]
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+include = ["src/", "tests/"]
+
+[tool.ruff]
+line-length = 88
+indent-width = 4
+target-version = "py312"
+
+[tool.uv]
+exclude-newer = "1 week"
