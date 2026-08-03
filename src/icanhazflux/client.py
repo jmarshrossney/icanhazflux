@@ -10,6 +10,7 @@ from .types import (
     _RAW_WARNING,
     PRODUCT_PRESETS,
     DataType,
+    DataTypeInput,
     DataTypeNotFound,
     _is_sensitive_product,
     list_datatypes,
@@ -121,9 +122,9 @@ class Client:
         out: dict[str, list[str]] = {}
         for name in PRODUCT_PRESETS:
             try:
-                out[name] = [t.label for t in match_product(types, name)]
+                out[name.value] = [t.label for t in match_product(types, name)]
             except DataTypeNotFound:
-                out[name] = []
+                out[name.value] = []
         return out
 
     def find(
@@ -131,7 +132,7 @@ class Client:
         station: str | Station,
         *,
         product: str | None = "l2",
-        datatype: str | list[str] | list[DataType] | None = None,
+        datatype: DataTypeInput | None = None,
         start: str | datetime | None = None,
         end: str | datetime | None = None,
         limit: int = 1000,
@@ -207,7 +208,7 @@ class Client:
         station: str | Station,
         *,
         product: str | None = "l2",
-        datatype: str | list[str] | list[DataType] | None = None,
+        datatype: DataTypeInput | None = None,
         start: str | datetime | None = None,
         end: str | datetime | None = None,
         out: str | Path = ".",

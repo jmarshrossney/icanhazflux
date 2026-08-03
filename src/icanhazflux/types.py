@@ -1,4 +1,5 @@
 from dataclasses import asdict, dataclass
+from enum import StrEnum
 
 from icoscp_core.icos import meta
 from icoscp_core.queries.speclist import DobjSpecLite
@@ -7,16 +8,29 @@ from . import cache
 
 ECO_THEME = "Ecosystem data"
 
+
+class ProductPreset(StrEnum):
+    """Friendly product preset names supported by the package."""
+
+    L2 = "l2"
+    FLUXNET = "fluxnet"
+    FLUXES = "fluxes"
+    METEO = "meteo"
+    NRT = "nrt"
+    RAW = "raw"
+    ARCHIVE = "archive"
+
+
 # Friendly preset → substrings matched against datatype labels (casefold).
 # Values are exact labels (casefold) unless prefixed with "~" (substring match).
-PRODUCT_PRESETS: dict[str, list[str]] = {
-    "l2": ["etc l2 fluxnet (half-hourly)"],
-    "fluxnet": ["etc l2 fluxnet (half-hourly)"],
-    "fluxes": ["etc l2 fluxes"],
-    "meteo": ["etc l2 meteo"],
-    "nrt": ["~etc nrt fluxnet"],
-    "raw": ["~eddy flux raw"],
-    "archive": ["etc l2 archive"],
+PRODUCT_PRESETS: dict[ProductPreset, list[str]] = {
+    ProductPreset.L2: ["etc l2 fluxnet (half-hourly)"],
+    ProductPreset.FLUXNET: ["etc l2 fluxnet (half-hourly)"],
+    ProductPreset.FLUXES: ["etc l2 fluxes"],
+    ProductPreset.METEO: ["etc l2 meteo"],
+    ProductPreset.NRT: ["~etc nrt fluxnet"],
+    ProductPreset.RAW: ["~eddy flux raw"],
+    ProductPreset.ARCHIVE: ["etc l2 archive"],
 }
 """Map of friendly product names to datatype label match rules.
 
@@ -79,6 +93,9 @@ class DataType:
             project=d.get("project", ""),
             format=d.get("format", ""),
         )
+
+
+type DataTypeInput = str | list[str] | list[DataType]
 
 
 class DataTypeNotFound(LookupError):
@@ -150,9 +167,14 @@ def match_product(types: list[DataType], product: str) -> list[DataType]:
     """Resolve preset/label against an in-memory list (pure, package-internal)."""
     key = product.strip().casefold()
 
-    if key in PRODUCT_PRESETS:
+    try:
+        preset = ProductPreset(key)
+    except ValueError:
+        preset = None
+
+    if preset is not None:
         hits: list[DataType] = []
-        for needle in PRODUCT_PRESETS[key]:
+        for needle in PRODUCT_PRESETS[preset]:
             if needle.startswith("~"):
                 sub = needle[1:]
                 hits.extend(t for t in types if sub in t.label.casefold())

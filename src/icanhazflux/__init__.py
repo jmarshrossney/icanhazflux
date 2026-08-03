@@ -3,7 +3,8 @@
 Not affiliated with ICOS or the ICOS Carbon Portal.
 
 Public API (stable):
-    Client, Station, DataType, DataObject, PRODUCT_PRESETS,
+    Client, Station, DataType, DataTypeInput, DataObject, ProductPreset,
+    PRODUCT_PRESETS,
     StationNotFound, AmbiguousStation, DataTypeNotFound, AmbiguousDataType
 
 Import only from this package root in application code::
@@ -20,7 +21,9 @@ from .types import (
     PRODUCT_PRESETS,
     AmbiguousDataType,
     DataType,
+    DataTypeInput,
     DataTypeNotFound,
+    ProductPreset,
 )
 from .version import __version__
 
@@ -31,7 +34,9 @@ __all__ = [
     "Client",
     "DataObject",
     "DataType",
+    "DataTypeInput",
     "DataTypeNotFound",
+    "ProductPreset",
     "Station",
     "StationNotFound",
     "__version__",

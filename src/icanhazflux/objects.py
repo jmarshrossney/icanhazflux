@@ -6,7 +6,7 @@ from icoscp_core.icos import meta
 from icoscp_core.queries.dataobjlist import DataObjectLite, Filter, TimeFilter
 
 from .stations import Station, resolve_station
-from .types import DataType, list_datatypes, resolve_product
+from .types import DataType, DataTypeInput, list_datatypes, resolve_product
 
 
 @dataclass(frozen=True)
@@ -87,7 +87,7 @@ def _find_objects(
     station: str | Station,
     *,
     product: str | None = None,
-    datatype: str | list[str] | list[DataType] | None = None,
+    datatype: DataTypeInput | None = None,
     start: str | datetime | None = None,
     end: str | datetime | None = None,
     limit: int = 1000,

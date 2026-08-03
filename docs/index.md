@@ -69,7 +69,8 @@ Station and datatype metadata is cached under `~/.cache/icanhazflux/` with a
 ## Python API
 
 Import from the package root only. The stable public surface is `Client`,
-`Station`, `DataType`, `DataObject`, `PRODUCT_PRESETS`, and the `*NotFound` /
+`Station`, `DataType`, `DataTypeInput`, `ProductPreset`, `DataObject`,
+`PRODUCT_PRESETS`, and the `*NotFound` /
 `Ambiguous*` exceptions. Submodules and underscore-prefixed names are internal
 and may change.
 

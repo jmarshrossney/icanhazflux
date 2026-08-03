@@ -1,12 +1,19 @@
 import pytest
 
 from icanhazflux.types import (
+    PRODUCT_PRESETS,
     AmbiguousDataType,
     DataTypeNotFound,
+    ProductPreset,
     _is_sensitive_product,
     match_label,
     match_product,
 )
+
+
+def test_product_presets_are_str_enums():
+    assert ProductPreset.L2 == "l2"
+    assert list(PRODUCT_PRESETS) == list(ProductPreset)
 
 
 def test_preset_l2(datatypes):
