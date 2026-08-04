@@ -5,14 +5,10 @@ icon: lucide/house
 
 # icanhazflux
 
-**Unofficial** Python API and CLI for downloading [ICOS](https://www.icos-cp.eu/)
+Unofficial Python API and CLI for downloading [ICOS](https://www.icos-cp.eu/)
 ecosystem station data, built on
-[`icoscp_core`](https://pypi.org/project/icoscp_core/).
-
-!!! warning "Not an official ICOS tool"
-
-    This project is **not affiliated with, endorsed by, or maintained by** ICOS
-    or the ICOS Carbon Portal. It is an independent convenience wrapper.
+[`icoscp_core`](https://pypi.org/project/icoscp_core/). It is not affiliated with
+ICOS or the ICOS Carbon Portal.
 
 Discovery needs no credentials. Downloads require an
 [ICOS Carbon Portal](https://cpauth.icos-cp.eu/) account with the **CC BY 4.0**
@@ -27,8 +23,8 @@ uv sync
 
 ## Command line
 
-The typical workflow is discover → inspect → download. Run `login` once first if
-you intend to download anything.
+The typical workflow is discover, inspect, then download. Run `login` once before
+downloading.
 
 ```bash
 icanhazflux login                          # once, interactive
@@ -37,8 +33,7 @@ icanhazflux objects SE-Htm --product l2    # inspect what's available (no auth)
 icanhazflux download SE-Htm --product l2 --out ./data
 ```
 
-Use `datatypes` to browse the ecosystem datatype catalogue and see which
-datatypes each product preset currently resolves to.
+Use `datatypes` to browse the ecosystem datatype catalogue and product presets.
 
 See the [CLI reference](cli.md) for every command and flag.
 
@@ -68,11 +63,9 @@ Station and datatype metadata is cached under `~/.cache/icanhazflux/` with a
 
 ## Python API
 
-Import from the package root only. The stable public surface is `Client`,
+Import the stable public API from the package root: `Client`,
 `Station`, `DataType`, `DataTypeInput`, `ProductPreset`, `DataObject`,
-`PRODUCT_PRESETS`, and the `*NotFound` /
-`Ambiguous*` exceptions. Submodules and underscore-prefixed names are internal
-and may change.
+`PRODUCT_PRESETS`, and the `*NotFound` / `Ambiguous*` exceptions.
 
 ```python
 from icanhazflux import Client
@@ -92,8 +85,4 @@ c.get("SE-Htm", product="meteo", out="./data")
 
 See the [API reference](api.md) for full signatures.
 
-## Scope
-
-- Ecosystem stations only (`ECO_STATION`)
-- File downloads only (`data.save_to_folder`)
-- Tabular DataFrame / CSV / Parquet export is planned but not implemented
+Downloads save original portal files. Tabular export is not currently provided.

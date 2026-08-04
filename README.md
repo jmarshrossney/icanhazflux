@@ -1,8 +1,6 @@
 # icanhazflux
 
-**Unofficial** Python API and CLI for downloading [ICOS](https://www.icos-cp.eu/) ecosystem station data, built on [`icoscp_core`](https://pypi.org/project/icoscp_core/).
-
-This project is **not affiliated with, endorsed by, or maintained by** ICOS or the ICOS Carbon Portal. It is an independent convenience wrapper.
+Unofficial Python API and CLI for downloading [ICOS](https://www.icos-cp.eu/) ecosystem station data, built on [`icoscp_core`](https://pypi.org/project/icoscp_core/). It is not affiliated with ICOS or the ICOS Carbon Portal.
 
 Discovery needs no credentials. Downloads require an [ICOS Carbon Portal](https://www.icos-cp.eu/) account with the **CC BY 4.0** licence accepted in your profile.
 
@@ -28,24 +26,11 @@ icanhazflux download SE-Htm --product l2 --out ./data
 icanhazflux download SE-Htm --product raw --start 2024-01-01 --end 2024-01-07 -y
 ```
 
-### Product presets
-
-| Preset    | Datatype                          |
-|-----------|-----------------------------------|
-| `l2` / `fluxnet` | ETC L2 Fluxnet (half-hourly) |
-| `fluxes`  | ETC L2 Fluxes                     |
-| `meteo`   | ETC L2 Meteo                      |
-| `nrt`     | ETC NRT Fluxnet                   |
-| `raw`     | Eddy flux raw daily archives      |
-| `archive` | ETC L2 ARCHIVE                    |
-
-Use `--datatype TEXT` to match a datatype label directly instead of using a preset: exact label first, then a unique substring match. It never consults the preset table, so `--datatype raw` matches labels containing "raw" rather than the `raw` preset.
-
-Station metadata and datatypes are cached under `~/.cache/icanhazflux/` (7-day TTL). Pass `--refresh` to reload, or `icanhazflux cache clear` to delete the caches (`icanhazflux cache path` prints the directory).
+Product presets and direct datatype matching are described in the [CLI reference](docs/cli.md).
 
 ## Python API
 
-Import from the package root only. The stable public surface is:
+Import the stable public API from the package root:
 
 `Client`, `Station`, `DataType`, `DataTypeInput`, `ProductPreset`, `DataObject`,
 `PRODUCT_PRESETS`, and the `*NotFound` / `Ambiguous*` exceptions.
@@ -64,9 +49,4 @@ c.download(objs, out="./data")
 c.get("SE-Htm", product="meteo", out="./data")
 ```
 
-Submodules (`icanhazflux.stations`, …) and underscore-prefixed names are internal.
-
-## Scope (v0)
-
-- Ecosystem stations only (`ECO_STATION`)
-- File downloads only (`data.save_to_folder`)
+Downloads currently save the original portal files.

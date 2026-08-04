@@ -20,19 +20,10 @@ from .types import (
 
 
 class Client:
-    """Facade over ``icoscp_core`` for ICOS ecosystem station data.
-
-    Use this class for discovery (no auth) and downloads (auth required).
-    Station and datatype lists are cached under ``~/.cache/icanhazflux/``.
-    """
+    """Access ICOS ecosystem station metadata and data files."""
 
     def login(self) -> None:
-        """Prompt for ICOS Carbon Portal credentials and store them locally.
-
-        Credentials are written via ``icoscp_core`` to the user config
-        directory. Accept the CC BY 4.0 licence in your portal profile
-        before downloading data.
-        """
+        """Prompt for Carbon Portal credentials and store them locally."""
         auth.init_config_file()
 
     def stations(
@@ -43,7 +34,7 @@ class Client:
         Args:
             search: Case-insensitive substring matched against station id,
                 name, or country code. ``None`` returns all stations.
-            refresh: If True, bypass the local station cache.
+            refresh: Bypass the local station cache.
 
         Returns:
             Matching stations, ordered as returned by the portal.
@@ -53,12 +44,11 @@ class Client:
     def resolve_station(self, query: str, *, refresh: bool = False) -> Station:
         """Resolve a user query to a single ecosystem station.
 
-        Resolution order: exact id, exact name, URI, then unique partial
-        match on id or name (all case-insensitive).
+        Matching tries exact id, exact name, URI, then a unique partial match.
 
         Args:
             query: Station id (e.g. ``SE-Htm``), name, or metadata URI.
-            refresh: If True, bypass the local station cache.
+            refresh: Bypass the local station cache.
 
         Returns:
             The unique matching station.
@@ -77,7 +67,7 @@ class Client:
         Args:
             search: Case-insensitive substring matched against label,
                 project, or format. ``None`` returns all ecosystem types.
-            refresh: If True, bypass the local datatype cache.
+            refresh: Bypass the local datatype cache.
 
         Returns:
             Matching datatypes.
@@ -85,7 +75,7 @@ class Client:
         return list_datatypes(search=search, refresh=refresh)
 
     def resolve_product(self, product: str, *, refresh: bool = False) -> list[DataType]:
-        """Resolve a product preset name or datatype label to datatypes.
+        """Resolve a product preset or datatype label to datatypes.
 
         Known presets are listed in `PRODUCT_PRESETS` (e.g. ``l2``,
         ``meteo``, ``raw``). Non-preset strings match datatype labels
@@ -93,7 +83,7 @@ class Client:
 
         Args:
             product: Preset key or datatype label / substring.
-            refresh: If True, bypass the local datatype cache.
+            refresh: Bypass the local datatype cache.
 
         Returns:
             One or more matching datatypes (presets like ``raw`` may
@@ -106,14 +96,10 @@ class Client:
         return resolve_product(product, refresh=refresh)
 
     def products(self, *, refresh: bool = False) -> dict[str, list[str]]:
-        """Map each product preset to the datatype labels it currently resolves to.
-
-        Presets resolve against the live catalog, so a preset that matches
-        nothing (e.g. after a portal rename) maps to an empty list rather
-        than raising.
+        """Map each product preset to its matching datatype labels.
 
         Args:
-            refresh: If True, bypass the local datatype cache.
+            refresh: Bypass the local datatype cache.
 
         Returns:
             Mapping of preset name to matching datatype labels.
@@ -139,7 +125,7 @@ class Client:
         include_deprecated: bool = False,
         refresh: bool = False,
     ) -> list[DataObject]:
-        """List data objects for a station (metadata only; no auth).
+        """List data objects for a station.
 
         Time bounds use observation-period overlap: an object is included
         if its coverage intersects ``[start, end]``. Date-only strings
@@ -158,7 +144,7 @@ class Client:
                 Date-only values are treated as end-of-day UTC.
             limit: Maximum number of objects to return.
             include_deprecated: If True, include superseded versions.
-            refresh: If True, bypass station/datatype caches.
+            refresh: Bypass station and datatype caches.
 
         Returns:
             Matching data objects, ordered by filename.
@@ -190,13 +176,12 @@ class Client:
     ) -> list[Path]:
         """Download data objects as original portal files.
 
-        Requires prior `login` (or an existing ``icoscp_core``
-        credentials file). Overwrites existing files with the same name.
+        Requires prior `login`. Existing files with the same name are overwritten.
 
         Args:
             objects: Objects to download (e.g. from `find`).
             out: Destination directory (created if missing).
-            progress: If True, print per-file progress to stdout.
+            progress: Print per-file progress to stdout.
 
         Returns:
             Paths of the saved files.
@@ -218,8 +203,7 @@ class Client:
     ) -> list[Path]:
         """Find and download data objects in one step.
 
-        Equivalent to `find` followed by `download`. Prints a
-        warning when the resolved product looks like raw or archive data.
+        This is equivalent to `find` followed by `download`.
 
         Args:
             station: Station id, name, URI, or a `Station`.
@@ -233,8 +217,8 @@ class Client:
                 Date-only values are treated as end-of-day UTC.
             out: Destination directory (created if missing).
             limit: Maximum number of objects to download.
-            refresh: If True, bypass station/datatype caches.
-            progress: If True, print progress and policy warnings.
+            refresh: Bypass station and datatype caches.
+            progress: Print progress and policy warnings.
 
         Returns:
             Paths of the saved files.
@@ -254,12 +238,5 @@ class Client:
 
     @staticmethod
     def total_size_bytes(objects: list[DataObject]) -> int:
-        """Sum the byte sizes of data objects.
-
-        Args:
-            objects: Objects whose sizes to sum.
-
-        Returns:
-            Total size in bytes.
-        """
+        """Return the combined size of data objects in bytes."""
         return _total_size_bytes(objects)

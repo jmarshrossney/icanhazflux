@@ -3,14 +3,7 @@ title: CLI
 icon: lucide/square-terminal
 ---
 
-Use the commands below to find a station, inspect its available data objects, and download the files you need.
-
-1. Use `sites` to find an ICOS ecosystem station.
-2. Use `objects STATION` to inspect the station's available data objects.
-3. Use `download STATION` to download the selected files.
-4. Use `login` before downloading if you have not configured portal credentials.
-
-Use `datatypes` when you need to choose a product preset or find an exact datatype label for `--datatype`. 
+Use these commands to find a station, inspect its data objects, and download files.
 
 ## `login`
 
@@ -50,7 +43,7 @@ Inspect the global ecosystem datatype catalog and the product presets accepted b
 
 ## `objects`
 
-List data objects available for a station without downloading them or requiring authentication.
+List data objects available for a station.
 
 ::: mkdocs-typer2
     :module: icanhazflux.cli
@@ -62,7 +55,7 @@ List data objects available for a station without downloading them or requiring 
 
 ## `download`
 
-Download data objects for a station. This requires portal credentials and an accepted CC BY 4.0 licence.
+Download data objects for a station.
 
 ::: mkdocs-typer2
     :module: icanhazflux.cli

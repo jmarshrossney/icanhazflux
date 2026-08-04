@@ -49,17 +49,16 @@ _RAW_WARNING = (
 
 @dataclass(frozen=True)
 class DataType:
-    """An ICOS ecosystem data object type (data object specification).
+    """An ICOS ecosystem data object type.
 
     Attributes:
         uri: Datatype metadata URI.
         label: Human-readable type label.
         data_level: ICOS data level (0 raw … 3 elaborated).
-        has_data_access: True if columnar/array access is supported by
-            the portal for this type (vs original-file download only).
-        theme: Data theme label (ecosystem types use ``Ecosystem data``).
-        project: Affiliated project label (e.g. ``ICOS``).
-        format: File/format label (e.g. CSV, zip archive).
+        has_data_access: Whether structured data access is supported.
+        theme: Data theme label.
+        project: Affiliated project label.
+        format: File format label.
     """
 
     uri: str

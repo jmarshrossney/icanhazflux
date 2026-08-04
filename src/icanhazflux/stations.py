@@ -12,7 +12,7 @@ class Station:
 
     Attributes:
         uri: Station metadata URI.
-        id: Network station id (often FLUXNET-style, e.g. ``SE-Htm``).
+        id: Network station id (e.g. ``SE-Htm``).
         name: Human-readable station name.
         country_code: ISO 3166-1 alpha-2 country code.
         lat: WGS-84 latitude of the principal location, if known.

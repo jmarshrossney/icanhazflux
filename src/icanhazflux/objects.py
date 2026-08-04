@@ -11,14 +11,14 @@ from .types import DataType, DataTypeInput, list_datatypes, resolve_product
 
 @dataclass(frozen=True)
 class DataObject:
-    """A data object available from the ICOS Carbon Portal.
+    """A data object available from the Carbon Portal.
 
     Attributes:
         uri: Landing-page URI of the object.
-        filename: Original filename as stored in the portal.
+        filename: Original filename.
         size_bytes: Object size in bytes.
         datatype_uri: URI of the object's datatype specification.
-        station_uri: URI of the associated station, if any.
+        station_uri: URI of the associated station, if available.
         submission_time: When the object was submitted to the portal.
         time_start: Start of the object's observation coverage.
         time_end: End of the object's observation coverage.
