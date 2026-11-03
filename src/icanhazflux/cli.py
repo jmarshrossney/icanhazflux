@@ -7,6 +7,7 @@ from rich.table import Table
 
 from . import cache
 from .client import Client
+from .releases import AmbiguousCollection, CollectionNotFound
 from .stations import AmbiguousStation, StationNotFound
 from .types import (
     _RAW_WARNING,
@@ -136,8 +137,44 @@ def datatypes_cmd(
     console.print(f"[dim]{len(types)} type(s)[/dim]")
 
 
+@app.command("collections")
+def collections_cmd(
+    search: str | None = typer.Option(
+        None, "--search", "-s", help="Filter by title or DOI"
+    ),
+    refresh: bool = typer.Option(
+        False, "--refresh", help="Bust local collection cache"
+    ),
+) -> None:
+    """List DOI collections (releases) containing ecosystem data."""
+    colls = _client().collections(search=search, refresh=refresh)
+    if not colls:
+        _die("No collections matched.")
+    by_uri = {c.uri: c for c in colls}
+    table = Table(show_header=True, header_style="bold")
+    table.add_column("Title")
+    table.add_column("DOI", no_wrap=True)
+    table.add_column("URI", no_wrap=True)
+    table.add_column("Objects", justify="right")
+    table.add_column("Note")
+    for c in colls:
+        same_doi = [
+            u for u in c.next_versions if u in by_uri and by_uri[u].doi == c.doi
+        ]
+        table.add_row(
+            c.title,
+            c.doi,
+            c.uri,
+            str(c.n_objects),
+            "superseded (same DOI)" if same_doi else "",
+        )
+    console.print(table)
+    console.print(f"[dim]{len(colls)} collection(s)[/dim]")
+
+
 def _resolve_query(
-    site: str,
+    site: str | None,
+    collection: str | None,
     product: str | None,
     datatype: str | None,
     start: str | None,
@@ -146,14 +183,33 @@ def _resolve_query(
     refresh: bool,
     include_deprecated: bool = False,
 ):
+    if site is None and collection is None:
+        _die("Give a SITE, a --collection, or both.")
+
     c = _client()
-    try:
-        st = c.resolve_station(site, refresh=refresh)
-    except StationNotFound as e:
-        _die(str(e))
-    except AmbiguousStation as e:
-        lines = "\n".join(f"  {m.id:10} {m.name}" for m in e.matches)
-        _die(f"{e}\n{lines}")
+    st = None
+    if site is not None:
+        try:
+            st = c.resolve_station(site, refresh=refresh)
+        except StationNotFound as e:
+            _die(str(e))
+        except AmbiguousStation as e:
+            lines = "\n".join(f"  {m.id:10} {m.name}" for m in e.matches)
+            _die(f"{e}\n{lines}")
+
+    coll_uri = None
+    if collection is not None:
+        try:
+            coll_uri = c.resolve_collection(collection, refresh=refresh)
+        except CollectionNotFound as e:
+            _die(str(e))
+        except AmbiguousCollection as e:
+            lines = "\n".join(
+                f"  {m.uri}  {m.n_objects} objects"
+                + (f", replaces {m.previous_version}" if m.previous_version else "")
+                for m in e.matches
+            )
+            _die(f"DOI {e.query!r} is shared by several collections:\n{lines}")
 
     # --datatype is a label match only; presets belong to --product.
     try:
@@ -169,6 +225,7 @@ def _resolve_query(
 
     objs = c.find(
         st,
+        collection=coll_uri,
         product=None,
         datatype=resolved_types,
         start=start,
@@ -177,12 +234,30 @@ def _resolve_query(
         include_deprecated=include_deprecated,
         refresh=refresh,
     )
-    return c, st, resolved_types, objs
+    return c, st, coll_uri, resolved_types, objs
+
+
+def _print_header(st, coll_uri: str | None, resolved_types) -> None:
+    if st is not None:
+        console.print(f"[bold]{st.id}[/bold] {st.name}  ({st.uri})")
+    if coll_uri is not None:
+        console.print(f"Collection: {coll_uri}")
+    console.print("Types: " + ", ".join(t.label for t in resolved_types))
+    if _is_sensitive_product(resolved_types):
+        console.print(f"[yellow]{_RAW_WARNING}[/yellow]")
 
 
 @app.command("objects")
 def objects_cmd(
-    site: str = typer.Argument(..., help="Station id, name, or URI (e.g. SE-Htm)"),
+    site: str | None = typer.Argument(
+        None, help="Station id, name, or URI (e.g. SE-Htm). Optional with --collection."
+    ),
+    collection: str | None = typer.Option(
+        None,
+        "--collection",
+        "-c",
+        help="Collection URI, or a DOI held by exactly one collection",
+    ),
     product: str | None = typer.Option(
         None,
         "--product",
@@ -204,18 +279,25 @@ def objects_cmd(
     ),
     limit: int = typer.Option(1000, "--limit", "-n", help="Max objects to return"),
     include_deprecated: bool = typer.Option(
-        False, "--include-deprecated", help="Include superseded object versions"
+        False,
+        "--include-deprecated",
+        help="Include superseded object versions (implied by --collection)",
     ),
     refresh: bool = typer.Option(False, "--refresh", help="Bust metadata caches"),
 ) -> None:
-    """List available data objects for a station (no auth)."""
-    _, st, resolved_types, objs = _resolve_query(
-        site, product, datatype, start, end, limit, refresh, include_deprecated
+    """List data objects for a station and/or collection (no auth)."""
+    _, st, coll_uri, resolved_types, objs = _resolve_query(
+        site,
+        collection,
+        product,
+        datatype,
+        start,
+        end,
+        limit,
+        refresh,
+        include_deprecated,
     )
-    console.print(f"[bold]{st.id}[/bold] {st.name}  ({st.uri})")
-    console.print("Types: " + ", ".join(t.label for t in resolved_types))
-    if _is_sensitive_product(resolved_types):
-        console.print(f"[yellow]{_RAW_WARNING}[/yellow]")
+    _print_header(st, coll_uri, resolved_types)
 
     if not objs:
         console.print("[dim]No objects found.[/dim]")
@@ -240,7 +322,15 @@ def objects_cmd(
 
 @app.command("download")
 def download_cmd(
-    site: str = typer.Argument(..., help="Station id, name, or URI (e.g. SE-Htm)"),
+    site: str | None = typer.Argument(
+        None, help="Station id, name, or URI (e.g. SE-Htm). Optional with --collection."
+    ),
+    collection: str | None = typer.Option(
+        None,
+        "--collection",
+        "-c",
+        help="Collection URI, or a DOI held by exactly one collection",
+    ),
     product: str | None = typer.Option(
         None,
         "--product",
@@ -266,18 +356,25 @@ def download_cmd(
     limit: int = typer.Option(1000, "--limit", "-n", help="Max objects to download"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip size confirmation"),
     include_deprecated: bool = typer.Option(
-        False, "--include-deprecated", help="Include superseded object versions"
+        False,
+        "--include-deprecated",
+        help="Include superseded object versions (implied by --collection)",
     ),
     refresh: bool = typer.Option(False, "--refresh", help="Bust metadata caches"),
 ) -> None:
-    """Download data objects for a station (requires login)."""
-    c, st, resolved_types, objs = _resolve_query(
-        site, product, datatype, start, end, limit, refresh, include_deprecated
+    """Download data objects for a station and/or collection (requires login)."""
+    c, st, coll_uri, resolved_types, objs = _resolve_query(
+        site,
+        collection,
+        product,
+        datatype,
+        start,
+        end,
+        limit,
+        refresh,
+        include_deprecated,
     )
-    console.print(f"[bold]{st.id}[/bold] {st.name}")
-    console.print("Types: " + ", ".join(t.label for t in resolved_types))
-    if _is_sensitive_product(resolved_types):
-        console.print(f"[yellow]{_RAW_WARNING}[/yellow]")
+    _print_header(st, coll_uri, resolved_types)
 
     if not objs:
         console.print("[dim]No objects found.[/dim]")
@@ -319,10 +416,10 @@ def cache_path_cmd() -> None:
 @cache_app.command("clear")
 def cache_clear_cmd(
     name: str | None = typer.Argument(
-        None, help="Cache to clear, e.g. stations or datatypes (default: all)"
+        None, help="Cache to clear: stations, datatypes or collections (default: all)"
     ),
 ) -> None:
-    """Delete cached station and datatype metadata."""
+    """Delete cached station, datatype and collection metadata."""
     cache.clear(name)
     target = f"{name!r} cache" if name else "all caches"
     console.print(f"[green]Cleared {target}.[/green]")

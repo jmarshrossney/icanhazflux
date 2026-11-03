@@ -116,3 +116,19 @@ def test_products_empty_for_unmatched_preset(monkeypatch):
 
 def test_total_size_bytes(sample_objects):
     assert Client.total_size_bytes(sample_objects) == 10 * 1024 * 1024
+
+
+def test_find_collection_without_station(monkeypatch):
+    from icanhazflux import client as client_mod
+
+    seen = {}
+
+    def fake_find_objects(station, **kwargs):
+        seen["station"] = station
+        seen.update(kwargs)
+        return [], []
+
+    monkeypatch.setattr(client_mod, "_find_objects", fake_find_objects)
+    Client().find(collection="10.18160/S6HM-CP8Q")
+    assert seen["station"] is None
+    assert seen["collection"] == "10.18160/S6HM-CP8Q"

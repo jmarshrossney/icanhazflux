@@ -3,8 +3,14 @@ from datetime import datetime
 from typing import cast
 
 from icoscp_core.icos import meta
-from icoscp_core.queries.dataobjlist import DataObjectLite, Filter, TimeFilter
+from icoscp_core.queries.dataobjlist import (
+    DataObjectLite,
+    Filter,
+    TimeFilter,
+    parse_dobj_lite,
+)
 
+from .releases import _collection_objects_query, resolve_collection
 from .stations import Station, resolve_station
 from .types import DataType, DataTypeInput, list_datatypes, resolve_product
 
@@ -84,8 +90,9 @@ def build_time_filters(
 
 
 def _find_objects(
-    station: str | Station,
+    station: str | Station | None = None,
     *,
+    collection: str | None = None,
     product: str | None = None,
     datatype: DataTypeInput | None = None,
     start: str | datetime | None = None,
@@ -96,13 +103,17 @@ def _find_objects(
 ) -> tuple[list[DataType], list[DataObject]]:
     """Resolve a query and run it. Returns the resolved datatypes and the objects.
 
-    ``datatype`` takes precedence over ``product`` when both are given.
+    ``datatype`` takes precedence over ``product`` when both are given. With
+    ``collection``, ``include_deprecated`` is ignored: a collection's members
+    are returned whether or not they have been superseded.
     Package-internal helper (not part of the public API).
     """
+    if station is None and collection is None:
+        raise ValueError("Give a station, a collection, or both")
     st = (
-        station
-        if isinstance(station, Station)
-        else resolve_station(station, refresh=refresh)
+        resolve_station(station, refresh=refresh)
+        if isinstance(station, str)
+        else station
     )
 
     resolved: list[DataType] = []
@@ -127,6 +138,18 @@ def _find_objects(
 
     filters = build_time_filters(start, end)
 
+    if collection is not None:
+        query = _collection_objects_query(
+            resolve_collection(collection, refresh=refresh),
+            datatype_uris=dtype_uris,
+            station_uris=[st.uri] if st else None,
+            filters=cast(list[Filter], filters),
+            limit=limit,
+        )
+        rows = meta.sparql_select(query).bindings
+        return resolved, [DataObject.from_lite(parse_dobj_lite(r)) for r in rows]
+
+    assert st is not None
     objs = meta.list_data_objects(
         datatype=dtype_uris,
         station=st.uri,

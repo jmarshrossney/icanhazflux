@@ -5,6 +5,7 @@ from icoscp_core.icos import auth
 
 from .download import _download_objects, _total_size_bytes
 from .objects import DataObject, _find_objects
+from .releases import Collection, list_collections, resolve_collection
 from .stations import Station, list_stations, resolve_station
 from .types import (
     _RAW_WARNING,
@@ -113,10 +114,47 @@ class Client:
                 out[name.value] = []
         return out
 
+    def collections(
+        self, search: str | None = None, *, refresh: bool = False
+    ) -> list[Collection]:
+        """List DOI collections that contain ecosystem data, such as ETC releases.
+
+        Args:
+            search: Case-insensitive substring matched against title or DOI.
+                ``None`` returns all collections.
+            refresh: Bypass the local collection cache.
+
+        Returns:
+            Matching collections, ordered by title.
+        """
+        return list_collections(search=search, refresh=refresh)
+
+    def resolve_collection(self, query: str, *, refresh: bool = False) -> str:
+        """Resolve a collection URI or DOI to a collection URI.
+
+        A collection URI is returned unchanged (normalised to https). A DOI,
+        bare or as a ``doi.org`` URL, resolves only if exactly one collection
+        has it. Several collections can share a DOI and hold different files,
+        so pass the URI when reproducibility matters.
+
+        Args:
+            query: Collection URI, DOI, or ``doi.org`` URL.
+            refresh: Bypass the local collection cache.
+
+        Returns:
+            The collection URI.
+
+        Raises:
+            CollectionNotFound: No collection matched.
+            AmbiguousCollection: The DOI is shared by several collections.
+        """
+        return resolve_collection(query, refresh=refresh)
+
     def find(
         self,
-        station: str | Station,
+        station: str | Station | None = None,
         *,
+        collection: str | None = None,
         product: str | None = "l2",
         datatype: DataTypeInput | None = None,
         start: str | datetime | None = None,
@@ -125,7 +163,11 @@ class Client:
         include_deprecated: bool = False,
         refresh: bool = False,
     ) -> list[DataObject]:
-        """List data objects for a station.
+        """List data objects for a station, a collection, or both.
+
+        With ``collection``, only the collection's members are returned,
+        including superseded versions, and ``station``, ``product``,
+        ``datatype`` and the time bounds filter within it.
 
         Time bounds use observation-period overlap: an object is included
         if its coverage intersects ``[start, end]``. Date-only strings
@@ -133,7 +175,10 @@ class Client:
         (``end``) UTC.
 
         Args:
-            station: Station id, name, URI, or a `Station`.
+            station: Station id, name, URI, or a `Station`. Required unless
+                ``collection`` is given.
+            collection: Collection URI, or a DOI held by exactly one
+                collection (see `Client.resolve_collection`).
             product: Product preset (default ``l2``). Ignored when
                 ``datatype`` is set.
             datatype: Datatype label, URI list, or a `DataType`
@@ -144,19 +189,24 @@ class Client:
                 Date-only values are treated as end-of-day UTC.
             limit: Maximum number of objects to return.
             include_deprecated: If True, include superseded versions.
+                Implied by ``collection``.
             refresh: Bypass station and datatype caches.
 
         Returns:
             Matching data objects, ordered by filename.
 
         Raises:
+            ValueError: Neither ``station`` nor ``collection`` was given.
             StationNotFound: Station query failed.
             AmbiguousStation: Station query was ambiguous.
+            CollectionNotFound: Collection query failed.
+            AmbiguousCollection: The DOI is shared by several collections.
             DataTypeNotFound: Product/datatype query failed.
             AmbiguousDataType: Product/datatype query was ambiguous.
         """
         _, objs = _find_objects(
             station,
+            collection=collection,
             product=product,
             datatype=datatype,
             start=start,
@@ -176,7 +226,9 @@ class Client:
     ) -> list[Path]:
         """Download data objects as original portal files.
 
-        Requires prior `login`. Existing files with the same name are overwritten.
+        Requires prior `login`. Existing files with the same name are
+        overwritten. Files from different releases often share a name, so use
+        a separate ``out`` directory per release.
 
         Args:
             objects: Objects to download (e.g. from `find`).
@@ -190,8 +242,9 @@ class Client:
 
     def get(
         self,
-        station: str | Station,
+        station: str | Station | None = None,
         *,
+        collection: str | None = None,
         product: str | None = "l2",
         datatype: DataTypeInput | None = None,
         start: str | datetime | None = None,
@@ -203,10 +256,15 @@ class Client:
     ) -> list[Path]:
         """Find and download data objects in one step.
 
-        This is equivalent to `find` followed by `download`.
+        This is equivalent to `find` followed by `download`. Existing files
+        with the same name are overwritten; use a separate ``out`` directory
+        per release.
 
         Args:
-            station: Station id, name, URI, or a `Station`.
+            station: Station id, name, URI, or a `Station`. Required unless
+                ``collection`` is given.
+            collection: Collection URI, or a DOI held by exactly one
+                collection (see `Client.resolve_collection`).
             product: Product preset (default ``l2``). Ignored when
                 ``datatype`` is set.
             datatype: Datatype label, URI list, or a `DataType`
@@ -225,6 +283,7 @@ class Client:
         """
         types, objs = _find_objects(
             station,
+            collection=collection,
             product=product,
             datatype=datatype,
             start=start,

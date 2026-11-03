@@ -24,7 +24,14 @@ icanhazflux datatypes                       # presets + eco datatypes
 icanhazflux objects SE-Htm --product l2
 icanhazflux download SE-Htm --product l2 --out ./data
 icanhazflux download SE-Htm --product raw --start 2024-01-01 --end 2024-01-07 -y
+icanhazflux collections --search "release 2025-1"   # releases with DOI and URI
+icanhazflux download --product l2 --collection 10.18160/S6HM-CP8Q --out ./data/2025-1
 ```
+
+`--collection` selects the files in one release, including versions that have
+since been superseded. It takes a collection URI, or a DOI held by exactly one
+collection. A DOI can be shared by several collections with different files,
+so pass the URI when reproducibility matters.
 
 Product presets and direct datatype matching are described in the [CLI reference](docs/cli.md).
 
@@ -33,7 +40,7 @@ Product presets and direct datatype matching are described in the [CLI reference
 Import the stable public API from the package root:
 
 `Client`, `Station`, `DataType`, `DataTypeInput`, `ProductPreset`, `DataObject`,
-`PRODUCT_PRESETS`, and the `*NotFound` / `Ambiguous*` exceptions.
+`Collection`, `PRODUCT_PRESETS`, and the `*NotFound` / `Ambiguous*` exceptions.
 
 ```python
 from icanhazflux import Client
@@ -47,6 +54,9 @@ c.download(objs, out="./data")
 
 # or one-shot
 c.get("SE-Htm", product="meteo", out="./data")
+
+# every station's L2 file in release 2025-1
+objs = c.find(product="l2", collection="10.18160/S6HM-CP8Q")
 ```
 
 Downloads currently save the original portal files.

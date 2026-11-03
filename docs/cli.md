@@ -41,9 +41,24 @@ Inspect the global ecosystem datatype catalog and the product presets accepted b
     :width: 88
     :prompt: ❯
 
+## `collections`
+
+List DOI collections containing ecosystem data, such as ETC releases, with the
+URI to pass to `--collection`.
+A collection marked "superseded (same DOI)" has been replaced by another
+collection with the same DOI.
+
+::: mkdocs-typer2
+    :module: icanhazflux.cli
+    :name: icanhazflux
+    :command: collections
+    :termynal: true
+    :width: 88
+    :prompt: ❯
+
 ## `objects`
 
-List data objects available for a station.
+List data objects available for a station, a collection, or both.
 
 ::: mkdocs-typer2
     :module: icanhazflux.cli
@@ -55,7 +70,7 @@ List data objects available for a station.
 
 ## `download`
 
-Download data objects for a station.
+Download data objects for a station, a collection, or both.
 
 ::: mkdocs-typer2
     :module: icanhazflux.cli
