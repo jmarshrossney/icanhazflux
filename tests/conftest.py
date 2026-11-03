@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 import pytest
 
 from icanhazflux.objects import DataObject
+from icanhazflux.releases import Collection
 from icanhazflux.stations import Station
 from icanhazflux.types import DataType
 
@@ -86,4 +87,39 @@ def sample_objects() -> list[DataObject]:
             time_start=ts,
             time_end=te,
         )
+    ]
+
+
+def _collection(
+    slug: str,
+    doi: str,
+    *,
+    title: str = "Ecosystem final quality (L2) product - release 2026-1",
+    n: int = 10,
+    prev: str | None = None,
+    nexts: list[str] | None = None,
+) -> Collection:
+    return Collection(
+        uri=f"https://meta.icos-cp.eu/collections/{slug}",
+        title=title,
+        doi=doi,
+        n_objects=n,
+        previous_versions=(prev,) if prev else (),
+        next_versions=tuple(nexts or ()),
+    )
+
+
+@pytest.fixture
+def collections() -> list[Collection]:
+    old = "https://meta.icos-cp.eu/collections/old2026"
+    new = "https://meta.icos-cp.eu/collections/new2026"
+    return [
+        _collection(
+            "r2025",
+            "10.18160/S6HM-CP8Q",
+            title="Ecosystem final quality (L2) product - release 2025-1",
+            n=423,
+        ),
+        _collection("old2026", "10.18160/S6TB-567H", n=210, nexts=[new]),
+        _collection("new2026", "10.18160/S6TB-567H", n=470, prev=old),
     ]

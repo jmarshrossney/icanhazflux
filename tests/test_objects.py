@@ -140,3 +140,45 @@ def test_find_objects_include_deprecated_passed_through(patched_objects):
     _find_objects("SE-Htm", product="l2", include_deprecated=True)
 
     assert patched_objects["query"]["include_deprecated"] is True
+
+
+@pytest.fixture
+def patched_collection(monkeypatch, patched_objects):
+    """Stub the SPARQL path; record the query text."""
+    from types import SimpleNamespace
+
+    from icanhazflux import objects as objects_mod
+
+    def fake_sparql_select(query):
+        patched_objects["sparql"] = query
+        return SimpleNamespace(bindings=[])
+
+    monkeypatch.setattr(objects_mod.meta, "sparql_select", fake_sparql_select)
+    monkeypatch.setattr(
+        objects_mod,
+        "resolve_collection",
+        lambda q, refresh=False: "https://meta.icos-cp.eu/collections/r2025",
+    )
+    return patched_objects
+
+
+def test_find_objects_collection_without_station(patched_collection, datatypes):
+    types, objs = _find_objects(collection="10.18160/S6HM-CP8Q", product="l2")
+
+    q = patched_collection["sparql"]
+    assert "<https://meta.icos-cp.eu/collections/r2025> dcterms:hasPart+" in q
+    assert "VALUES ?station" not in q
+    assert types[0].uri in q.replace("https://", "http://")
+    assert patched_collection["query"] is None
+    assert objs == []
+
+
+def test_find_objects_collection_with_station(patched_collection, stations):
+    _find_objects("SE-Htm", collection="10.18160/S6HM-CP8Q", product="l2")
+
+    assert f"VALUES ?station {{ <{stations[0].uri}> }}" in patched_collection["sparql"]
+
+
+def test_find_objects_requires_station_or_collection(patched_objects):
+    with pytest.raises(ValueError, match="station, a collection"):
+        _find_objects(product="l2")

@@ -3,6 +3,7 @@ from typer.testing import CliRunner
 
 from icanhazflux import __version__
 from icanhazflux.cli import app
+from icanhazflux.releases import match_collection
 from icanhazflux.stations import AmbiguousStation, Station, StationNotFound
 from icanhazflux.types import match_label, match_product
 
@@ -22,11 +23,13 @@ def _station(id: str = "SE-Htm", name: str = "Hyltemossa") -> Station:
 
 
 class FakeClient:
-    def __init__(self, stations=None, objects=None, types=None):
+    def __init__(self, stations=None, objects=None, types=None, collections=None):
         self._stations = stations or [_station()]
+        self._collections = collections or []
         self._objects = objects or []
         self._types = types or []
         self.find_kwargs = None
+        self.find_station = None
         self.downloaded = None
         self.download_error = None
 
@@ -49,7 +52,17 @@ class FakeClient:
             raise AmbiguousStation(query, hits)
         raise StationNotFound(f"No ecosystem station matching {query!r}")
 
+    def collections(self, search=None, *, refresh=False):
+        if not search:
+            return self._collections
+        q = search.casefold()
+        return [c for c in self._collections if q in c.title.casefold()]
+
+    def resolve_collection(self, query, *, refresh=False):
+        return match_collection(self._collections, query)
+
     def find(self, station, **kwargs):
+        self.find_station = station
         self.find_kwargs = kwargs
         return self._objects
 
@@ -247,3 +260,139 @@ def test_version_prints_version():
     result = runner.invoke(app, ["version"])
     assert result.exit_code == 0
     assert __version__ in result.stdout
+
+
+@pytest.fixture
+def wired_collections(wired, collections):
+    wired._collections = collections
+    return wired
+
+
+def test_collections_lists_and_marks_superseded(wired_collections):
+    result = runner.invoke(app, ["collections"], env={"COLUMNS": "200"})
+    assert result.exit_code == 0
+    assert "10.18160/S6HM-CP8Q" in result.stdout
+    assert "r2025" in result.stdout
+    assert result.stdout.count("superseded") == 1
+
+
+def test_collections_no_match_exits_one(wired_collections):
+    result = runner.invoke(app, ["collections", "--search", "nope"])
+    assert result.exit_code == 1
+
+
+def test_objects_collection_without_site(wired_collections):
+    result = runner.invoke(
+        app, ["objects", "--collection", "10.18160/S6HM-CP8Q", "--product", "l2"]
+    )
+    assert result.exit_code == 0
+    assert "Collection: https://meta.icos-cp.eu/collections/r2025" in result.stdout
+    assert wired_collections.find_station is None
+    assert (
+        wired_collections.find_kwargs["collection"]
+        == "https://meta.icos-cp.eu/collections/r2025"
+    )
+
+
+def test_objects_collection_with_site(wired_collections):
+    result = runner.invoke(app, ["objects", "SE-Htm", "-c", "10.18160/S6HM-CP8Q"])
+    assert result.exit_code == 0
+    assert wired_collections.find_station.id == "SE-Htm"
+
+
+def test_objects_ambiguous_doi_lists_uris(wired_collections):
+    result = runner.invoke(app, ["objects", "--collection", "10.18160/S6TB-567H"])
+    assert result.exit_code == 1
+    combined = result.stdout + result.stderr
+    assert "old2026" in combined
+    assert "new2026" in combined
+    assert wired_collections.find_kwargs is None
+
+
+def test_collections_superseded_note_survives_search(wired):
+    from icanhazflux.releases import Collection
+
+    base = "https://meta.icos-cp.eu/collections/"
+    wired._collections = [
+        Collection(base + "old", "release 2026-1", "10.1/x", 2, (), (base + "new",)),
+        Collection(
+            base + "new", "release 2026-1 (updated)", "10.1/x", 3, (base + "old",)
+        ),
+    ]
+    result = runner.invoke(
+        app, ["collections", "--search", "release 2026-1"], env={"COLUMNS": "200"}
+    )
+    assert result.stdout.count("superseded") == 1
+    result = runner.invoke(
+        app, ["collections", "--search", "zzz"], env={"COLUMNS": "200"}
+    )
+    assert result.exit_code == 1
+
+
+def test_objects_ambiguous_doi_uses_exception_message(wired_collections):
+    result = runner.invoke(
+        app,
+        ["objects", "--collection", "10.18160/S6TB-567H"],
+        env={"COLUMNS": "300"},
+    )
+    combined = result.stdout + result.stderr
+    assert "is shared by 2 collections" in combined
+    assert "replaces https://meta.icos-cp.eu/collections/old2026" in combined
+
+
+def test_objects_collection_alone_applies_no_type_filter(wired_collections):
+    result = runner.invoke(app, ["objects", "--collection", "10.18160/S6HM-CP8Q"])
+    assert result.exit_code == 0
+    assert wired_collections.find_kwargs["datatype"] is None
+    assert wired_collections.find_kwargs["product"] is None
+    assert "all ecosystem types" in result.stdout
+
+
+def test_objects_collection_alone_warns_on_raw_objects(
+    wired_collections, sample_objects, datatypes
+):
+    from dataclasses import replace
+
+    raw = next(t for t in datatypes if t.data_level == 0)
+    wired_collections._objects = [replace(sample_objects[0], datatype_uri=raw.uri)]
+    result = runner.invoke(app, ["objects", "--collection", "10.18160/S6HM-CP8Q"])
+    assert "PI consultation" in result.stdout
+
+
+def test_objects_site_without_type_still_defaults_to_l2(wired):
+    runner.invoke(app, ["objects", "SE-Htm"])
+    assert wired.find_kwargs["datatype"]
+
+
+@pytest.mark.parametrize(
+    ("args", "warned"),
+    [
+        (["SE-Htm", "--limit", "1"], True),
+        (["SE-Htm", "--limit", "2"], False),
+        (["--collection", "10.18160/S6HM-CP8Q", "--limit", "20000"], False),
+    ],
+)
+def test_objects_warns_when_limit_reached(wired_collections, args, warned):
+    result = runner.invoke(app, ["objects", *args])
+    assert result.exit_code == 0
+    assert ("truncated" in result.stdout) is warned
+
+
+def test_objects_unknown_collection(wired_collections):
+    result = runner.invoke(app, ["objects", "--collection", "release 2025-1"])
+    assert result.exit_code == 1
+    assert "neither" in result.stdout + result.stderr
+
+
+def test_objects_requires_site_or_collection(wired):
+    result = runner.invoke(app, ["objects"])
+    assert result.exit_code == 1
+    assert "--collection" in result.stdout + result.stderr
+
+
+def test_download_collection_without_site(wired_collections):
+    result = runner.invoke(
+        app, ["download", "--collection", "10.18160/S6HM-CP8Q", "--yes"]
+    )
+    assert result.exit_code == 0
+    assert wired_collections.downloaded is not None
