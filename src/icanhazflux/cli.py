@@ -7,7 +7,7 @@ from rich.table import Table
 
 from . import cache
 from .client import Client
-from .releases import AmbiguousCollection, CollectionNotFound
+from .releases import COLLECTION_LIMIT_CAP, AmbiguousCollection, CollectionNotFound
 from .stations import AmbiguousStation, StationNotFound
 from .types import (
     _RAW_WARNING,
@@ -147,10 +147,13 @@ def collections_cmd(
     ),
 ) -> None:
     """List DOI collections (releases) containing ecosystem data."""
-    colls = _client().collections(search=search, refresh=refresh)
+    client = _client()
+    everything = client.collections(refresh=refresh)
+    colls = client.collections(search=search) if search else everything
     if not colls:
         _die("No collections matched.")
-    by_uri = {c.uri: c for c in colls}
+    # Successors may not match --search, so look them up in the full list.
+    by_uri = {c.uri: c for c in everything}
     table = Table(show_header=True, header_style="bold")
     table.add_column("Title")
     table.add_column("DOI", no_wrap=True)
@@ -206,16 +209,23 @@ def _resolve_query(
         except AmbiguousCollection as e:
             lines = "\n".join(
                 f"  {m.uri}  {m.n_objects} objects"
-                + (f", replaces {m.previous_version}" if m.previous_version else "")
+                + (
+                    f", replaces {', '.join(m.previous_versions)}"
+                    if m.previous_versions
+                    else ""
+                )
                 for m in e.matches
             )
-            _die(f"DOI {e.query!r} is shared by several collections:\n{lines}")
+            _die(f"{e}\n{lines}")
 
-    # --datatype is a label match only; presets belong to --product.
+    # --datatype is a label match only; presets belong to --product. A
+    # collection alone selects the whole release, so no type filter applies.
+    type_filter = datatype is not None or product is not None or coll_uri is None
+    resolved_types = []
     try:
         if datatype is not None:
             resolved_types = resolve_label(datatype, refresh=refresh)
-        else:
+        elif type_filter:
             resolved_types = resolve_product(product or "l2", refresh=refresh)
     except DataTypeNotFound as e:
         _die(str(e))
@@ -227,24 +237,38 @@ def _resolve_query(
         st,
         collection=coll_uri,
         product=None,
-        datatype=resolved_types,
+        datatype=resolved_types if type_filter else None,
         start=start,
         end=end,
         limit=limit,
         include_deprecated=include_deprecated,
         refresh=refresh,
     )
-    return c, st, coll_uri, resolved_types, objs
+    if not type_filter:
+        found = {o.datatype_uri for o in objs}
+        resolved_types = [t for t in c.datatypes(refresh=refresh) if t.uri in found]
+    return c, st, coll_uri, type_filter, resolved_types, objs
 
 
-def _print_header(st, coll_uri: str | None, resolved_types) -> None:
+def _print_header(
+    st, coll_uri: str | None, type_filter: bool, resolved_types, objs, limit: int
+) -> None:
     if st is not None:
         console.print(f"[bold]{st.id}[/bold] {st.name}  ({st.uri})")
     if coll_uri is not None:
         console.print(f"Collection: {coll_uri}")
-    console.print("Types: " + ", ".join(t.label for t in resolved_types))
+    if type_filter:
+        console.print("Types: " + ", ".join(t.label for t in resolved_types))
+    else:
+        console.print("Types: all ecosystem types in the collection")
     if _is_sensitive_product(resolved_types):
         console.print(f"[yellow]{_RAW_WARNING}[/yellow]")
+    cap = min(limit, COLLECTION_LIMIT_CAP) if coll_uri is not None else limit
+    if objs and len(objs) >= cap:
+        console.print(
+            f"[yellow]Results truncated at {cap} objects; "
+            "raise --limit to see the rest.[/yellow]"
+        )
 
 
 @app.command("objects")
@@ -262,7 +286,8 @@ def objects_cmd(
         None,
         "--product",
         "-p",
-        help=f"Preset: {', '.join(PRODUCT_PRESETS)} (default: l2)",
+        help=f"Preset: {', '.join(PRODUCT_PRESETS)} "
+        "(default: l2, or all types with --collection)",
     ),
     datatype: str | None = typer.Option(
         None,
@@ -286,7 +311,7 @@ def objects_cmd(
     refresh: bool = typer.Option(False, "--refresh", help="Bust metadata caches"),
 ) -> None:
     """List data objects for a station and/or collection (no auth)."""
-    _, st, coll_uri, resolved_types, objs = _resolve_query(
+    _, st, coll_uri, type_filter, resolved_types, objs = _resolve_query(
         site,
         collection,
         product,
@@ -297,7 +322,7 @@ def objects_cmd(
         refresh,
         include_deprecated,
     )
-    _print_header(st, coll_uri, resolved_types)
+    _print_header(st, coll_uri, type_filter, resolved_types, objs, limit)
 
     if not objs:
         console.print("[dim]No objects found.[/dim]")
@@ -335,7 +360,8 @@ def download_cmd(
         None,
         "--product",
         "-p",
-        help=f"Preset: {', '.join(PRODUCT_PRESETS)} (default: l2)",
+        help=f"Preset: {', '.join(PRODUCT_PRESETS)} "
+        "(default: l2, or all types with --collection)",
     ),
     datatype: str | None = typer.Option(
         None,
@@ -363,7 +389,7 @@ def download_cmd(
     refresh: bool = typer.Option(False, "--refresh", help="Bust metadata caches"),
 ) -> None:
     """Download data objects for a station and/or collection (requires login)."""
-    c, st, coll_uri, resolved_types, objs = _resolve_query(
+    c, st, coll_uri, type_filter, resolved_types, objs = _resolve_query(
         site,
         collection,
         product,
@@ -374,7 +400,7 @@ def download_cmd(
         refresh,
         include_deprecated,
     )
-    _print_header(st, coll_uri, resolved_types)
+    _print_header(st, coll_uri, type_filter, resolved_types, objs, limit)
 
     if not objs:
         console.print("[dim]No objects found.[/dim]")

@@ -29,9 +29,10 @@ icanhazflux download --product l2 --collection 10.18160/S6HM-CP8Q --out ./data/2
 ```
 
 `--collection` selects the files in one release, including versions that have
-since been superseded. It takes a collection URI, or a DOI held by exactly one
-collection. A DOI can be shared by several collections with different files,
-so pass the URI when reproducibility matters.
+since been superseded; without `--product` or `--datatype` it selects every
+ecosystem file in the release. It takes a collection URI, or a DOI held by
+exactly one collection. A DOI can be shared by several collections with
+different files, so pass the URI when reproducibility matters.
 
 Product presets and direct datatype matching are described in the [CLI reference](docs/cli.md).
 

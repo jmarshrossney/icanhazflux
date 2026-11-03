@@ -132,10 +132,12 @@ class Client:
     def resolve_collection(self, query: str, *, refresh: bool = False) -> str:
         """Resolve a collection URI or DOI to a collection URI.
 
-        A collection URI is returned unchanged (normalised to https). A DOI,
-        bare or as a ``doi.org`` URL, resolves only if exactly one collection
-        has it. Several collections can share a DOI and hold different files,
-        so pass the URI when reproducibility matters.
+        A collection URI resolves if it is a listed ecosystem collection, and
+        is returned normalised to https. A DOI, bare or as a ``doi.org`` URL,
+        resolves only if exactly one collection has it. Several collections
+        can share a DOI and hold different files, so pass the URI when
+        reproducibility matters. On a miss the collection list is refetched
+        once, so a release published since the cache was filled is found.
 
         Args:
             query: Collection URI, DOI, or ``doi.org`` URL.
@@ -187,7 +189,9 @@ class Client:
                 Date-only values are treated as start-of-day UTC.
             end: Include objects whose coverage begins before this instant.
                 Date-only values are treated as end-of-day UTC.
-            limit: Maximum number of objects to return.
+            limit: Maximum number of objects to return. Results beyond it
+                are dropped without warning. Collection queries are capped
+                at 10000.
             include_deprecated: If True, include superseded versions.
                 Implied by ``collection``.
             refresh: Bypass station and datatype caches.

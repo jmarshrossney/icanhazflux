@@ -60,7 +60,10 @@ match.
 ETC publishes releases as Carbon Portal collections, each with a DOI. Most files
 in a past release have since been superseded, so `--collection` includes
 superseded versions. `SITE`, `--product`, `--datatype` and the time bounds
-filter within the collection.
+filter within the collection. Without `--product` or `--datatype`, every
+ecosystem file in the collection is selected, not just the `l2` preset.
+Results stop at `--limit` (at most 10000 for a collection), with a warning
+when it is reached.
 
 ```bash
 icanhazflux collections --search "release 2025-1"

@@ -1,12 +1,15 @@
 import re
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 
 from icoscp_core.icos import meta
 from icoscp_core.queries.dataobjlist import Filter
-from icoscp_core.sparql import Binding, as_opt_uri, as_string, as_uri
+from icoscp_core.sparql import Binding, as_opt_str, as_string, as_uri
 
 from . import cache
 from .types import ECO_THEME
+
+# The portal rejects larger result sets for the collection-members query.
+COLLECTION_LIMIT_CAP = 10000
 
 # Collections live under https IRIs in the triple store, whereas stations and
 # datatypes use http. A collection IRI with the wrong scheme matches nothing.
@@ -40,7 +43,7 @@ class Collection:
         title: Collection title.
         doi: DOI of the collection, without a resolver prefix.
         n_objects: Number of direct members.
-        previous_version: URI of the collection this one replaces, if any.
+        previous_versions: URIs of the collections this one replaces.
         next_versions: URIs of listed collections that replace this one.
     """
 
@@ -48,8 +51,8 @@ class Collection:
     title: str
     doi: str
     n_objects: int
-    previous_version: str | None = None
-    next_versions: list[str] = field(default_factory=list)
+    previous_versions: tuple[str, ...] = ()
+    next_versions: tuple[str, ...] = ()
 
     @classmethod
     def from_dict(cls, d: dict) -> "Collection":
@@ -58,8 +61,8 @@ class Collection:
             title=d["title"],
             doi=d["doi"],
             n_objects=int(d["n_objects"]),
-            previous_version=d.get("previous_version"),
-            next_versions=list(d.get("next_versions", [])),
+            previous_versions=tuple(d.get("previous_versions", ())),
+            next_versions=tuple(d.get("next_versions", ())),
         )
 
 
@@ -88,11 +91,14 @@ class AmbiguousCollection(LookupError):
 
 
 # The ecosystem filter runs in a subquery: joining it with the member count in
-# one pattern times out on the portal.
+# one pattern times out on the portal. Predecessors are concatenated so that a
+# collection replacing several others is still one row.
 _COLLECTIONS_QUERY = (
     _PREFIXES
     + f"""
-select ?coll ?title ?doi ?prev (count(?member) as ?n)
+select ?coll ?title ?doi
+    (group_concat(distinct str(?prev); separator=" ") as ?prevs)
+    (count(distinct ?member) as ?n)
 where {{
     {{
         select distinct ?coll where {{
@@ -106,28 +112,28 @@ where {{
     ?coll dcterms:title ?title ; cpmeta:hasDoi ?doi ; dcterms:hasPart ?member .
     OPTIONAL {{ ?coll cpmeta:isNextVersionOf ?prev }}
 }}
-group by ?coll ?title ?doi ?prev
+group by ?coll ?title ?doi
 order by ?title ?coll
 """
 )
 
 
 def _parse_collections(rows: list[Binding]) -> list[dict]:
-    """Parse query rows; ``next_versions`` is the inverse of ``previous_version``."""
+    """Parse query rows; ``next_versions`` is the inverse of ``previous_versions``."""
     colls = [
         Collection(
             uri=as_uri("coll", r),
             title=as_string("title", r),
             doi=as_string("doi", r),
             n_objects=int(as_string("n", r)),
-            previous_version=as_opt_uri("prev", r),
+            previous_versions=tuple((as_opt_str("prevs", r) or "").split()),
         )
         for r in rows
     ]
     nexts: dict[str, list[str]] = {}
     for c in colls:
-        if c.previous_version is not None:
-            nexts.setdefault(c.previous_version, []).append(c.uri)
+        for prev in c.previous_versions:
+            nexts.setdefault(prev, []).append(c.uri)
     return [asdict(c) | {"next_versions": nexts.get(c.uri, [])} for c in colls]
 
 
@@ -167,12 +173,14 @@ def normalise_collection_uri(query: str) -> str | None:
 def match_collection(collections: list[Collection], query: str) -> str:
     """Resolve a collection URI or 1-1 DOI to a collection URI (pure, internal).
 
-    A URI is returned as-is without consulting ``collections``. A DOI must be
-    held by exactly one collection; there is no rule to choose between several.
+    A URI must be one of ``collections``. A DOI must be held by exactly one
+    collection; there is no rule to choose between several.
     """
     uri = normalise_collection_uri(query)
     if uri is not None:
-        return uri
+        if any(c.uri == uri for c in collections):
+            return uri
+        raise CollectionNotFound(f"No ecosystem collection with URI {uri!r}")
 
     doi = normalise_doi(query)
     if doi is None:
@@ -180,7 +188,7 @@ def match_collection(collections: list[Collection], query: str) -> str:
             f"{query!r} is neither a collection URI nor a DOI; "
             "use Client.collections(search=...) to find one"
         )
-    hits = [c for c in collections if c.doi.casefold() == doi]
+    hits = list({c.uri: c for c in collections if c.doi.casefold() == doi}.values())
     if len(hits) == 1:
         return hits[0].uri
     if len(hits) > 1:
@@ -189,16 +197,23 @@ def match_collection(collections: list[Collection], query: str) -> str:
 
 
 def resolve_collection(query: str, *, refresh: bool = False) -> str:
-    """Resolve a collection query to a URI. Prefer ``Client.resolve_collection``."""
-    if normalise_collection_uri(query) is not None:
-        return match_collection([], query)
-    return match_collection(list_collections(refresh=refresh), query)
+    """Resolve a collection query to a URI. Prefer ``Client.resolve_collection``.
+
+    On a miss with a cached list, refetches once in case the collection is new.
+    """
+    try:
+        return match_collection(list_collections(refresh=refresh), query)
+    except CollectionNotFound:
+        is_id = normalise_collection_uri(query) or normalise_doi(query)
+        if refresh or not is_id:
+            raise
+        return match_collection(list_collections(refresh=True), query)
 
 
 def _values(var: str, uris: list[str]) -> str:
     if not uris:
         return ""
-    joined = " ".join(f"<{u.replace('https://', 'http://', 1)}>" for u in uris)
+    joined = " ".join(f"<{u.replace('https://', 'http://')}>" for u in uris)
     return f"VALUES ?{var} {{ {joined} }}"
 
 
@@ -215,7 +230,8 @@ def _collection_objects_query(
     Selects the same variables as ``icoscp_core``'s data object list so rows
     parse with ``parse_dobj_lite``. Deprecated objects are deliberately kept:
     a past release consists mostly of superseded versions. ``hasPart+``
-    flattens nested collections.
+    flattens nested collections. Only ecosystem-theme objects are returned,
+    since a collection can mix themes.
     """
     station_uris = station_uris or []
     station_link = "?dobj cpmeta:wasAcquiredBy/prov:wasAssociatedWith ?station ."
@@ -231,6 +247,7 @@ where {{
     <{collection_uri}> dcterms:hasPart+ ?dobj .
     {_values("spec", datatype_uris or [])}
     ?dobj cpmeta:hasObjectSpec ?spec .
+    ?spec cpmeta:hasDataTheme/rdfs:label "{ECO_THEME}" .
     {_values("station", station_uris)}
     {station_link}
     OPTIONAL {{ ?dobj cpmeta:wasAcquiredBy/cpmeta:hasSamplingHeight ?samplingHeight }}
@@ -242,5 +259,5 @@ where {{
     {filter_clause}
 }}
 order by ?fileName
-limit {min(limit, 10000)}"""
+limit {min(limit, COLLECTION_LIMIT_CAP)}"""
     )

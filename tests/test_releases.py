@@ -1,5 +1,11 @@
+import re
+
 import pytest
-from icoscp_core.queries.dataobjlist import TimeFilter
+from icoscp_core.queries.dataobjlist import (
+    TimeFilter,
+    dataobj_lite_list,
+    parse_dobj_lite,
+)
 from icoscp_core.sparql import BoundLiteral, BoundUri
 
 from icanhazflux import cache
@@ -12,6 +18,7 @@ from icanhazflux.releases import (
     match_collection,
     normalise_collection_uri,
     normalise_doi,
+    resolve_collection,
 )
 
 R2025 = "https://meta.icos-cp.eu/collections/r2025"
@@ -57,9 +64,55 @@ def test_normalise_collection_uri_rejects_object_uri():
     assert normalise_collection_uri("https://meta.icos-cp.eu/objects/abc") is None
 
 
-def test_match_uri_passthrough_without_listing():
-    uri = "http://meta.icos-cp.eu/collections/unlisted"
-    assert match_collection([], uri) == uri.replace("http://", "https://")
+def test_match_listed_uri_normalised(collections):
+    assert match_collection(collections, R2025.replace("https://", "http://")) == R2025
+
+
+def test_match_unlisted_uri_not_found(collections):
+    with pytest.raises(CollectionNotFound, match="No ecosystem collection with URI"):
+        match_collection(collections, "https://meta.icos-cp.eu/collections/typo")
+
+
+def test_match_doi_dedupes_repeated_uri(collections):
+    r2025 = collections[0]
+    assert match_collection([r2025, r2025], r2025.doi) == R2025
+
+
+def test_collection_is_hashable(collections):
+    assert len(set(collections)) == len(collections)
+
+
+@pytest.fixture
+def listing(monkeypatch, collections):
+    """Stub list_collections: a stale cache without r2025, a fresh fetch with it."""
+    from icanhazflux import releases
+
+    calls = []
+
+    def fake_list(*, search=None, refresh=False):
+        calls.append(refresh)
+        return collections if refresh else collections[1:]
+
+    monkeypatch.setattr(releases, "list_collections", fake_list)
+    return calls
+
+
+@pytest.mark.parametrize("query", [R2025, "10.18160/S6HM-CP8Q"])
+def test_resolve_refetches_once_on_miss(listing, query):
+    assert resolve_collection(query) == R2025
+    assert listing == [False, True]
+
+
+def test_resolve_does_not_refetch_non_identifier(listing):
+    with pytest.raises(CollectionNotFound, match="neither"):
+        resolve_collection("release 2025-1")
+    assert listing == [False]
+
+
+def test_resolve_with_refresh_does_not_refetch_again(listing):
+    with pytest.raises(CollectionNotFound):
+        resolve_collection("10.18160/NOPE", refresh=True)
+    assert listing == [True]
 
 
 def test_match_unique_doi(collections):
@@ -84,23 +137,27 @@ def test_match_neither_uri_nor_doi(collections):
 
 
 def test_parse_collections_derives_next_versions():
-    def row(slug, prev=None):
-        r = {
-            "coll": BoundUri(f"https://meta.icos-cp.eu/collections/{slug}"),
+    base = "https://meta.icos-cp.eu/collections/"
+
+    def row(slug, *prevs):
+        return {
+            "coll": BoundUri(base + slug),
             "title": BoundLiteral(f"release {slug}", None),
             "doi": BoundLiteral("10.1/x", None),
             "n": BoundLiteral("3", "http://www.w3.org/2001/XMLSchema#integer"),
+            # group_concat binds an empty string when there is no predecessor.
+            "prevs": BoundLiteral(" ".join(base + p for p in prevs), None),
         }
-        if prev:
-            r["prev"] = BoundUri(f"https://meta.icos-cp.eu/collections/{prev}")
-        return r
 
     out = {
         d["uri"].rsplit("/", 1)[1]: d
-        for d in _parse_collections([row("a"), row("b", prev="a")])
+        for d in _parse_collections([row("a"), row("b"), row("c", "a", "b")])
     }
-    assert out["a"]["next_versions"] == ["https://meta.icos-cp.eu/collections/b"]
-    assert out["b"]["next_versions"] == []
+    assert out["a"]["next_versions"] == [base + "c"]
+    assert out["b"]["next_versions"] == [base + "c"]
+    assert out["c"]["previous_versions"] == (base + "a", base + "b")
+    assert out["c"]["next_versions"] == []
+    assert out["a"]["previous_versions"] == ()
     assert out["a"]["n_objects"] == 3
 
 
@@ -141,6 +198,7 @@ def test_collection_objects_query_shape():
     )
     assert "OPTIONAL { ?dobj cpmeta:wasAcquiredBy/prov:wasAssociatedWith" not in q
     assert '?timeEnd > "2024-01-01T00:00:00Z"^^xsd:dateTime' in q
+    assert '?spec cpmeta:hasDataTheme/rdfs:label "Ecosystem data"' in q
     assert "isNextVersionOf" not in q
     assert q.rstrip().endswith("limit 50")
 
@@ -150,3 +208,43 @@ def test_collection_objects_query_without_station_is_optional():
     assert "VALUES" not in q
     assert "OPTIONAL { ?dobj cpmeta:wasAcquiredBy/prov:wasAssociatedWith" in q
     assert "FILTER" not in q
+
+
+def test_collection_objects_query_always_restricts_theme():
+    q = _collection_objects_query(R2025)
+    assert '?spec cpmeta:hasDataTheme/rdfs:label "Ecosystem data"' in q
+
+
+def test_collection_objects_query_caps_limit():
+    assert (
+        _collection_objects_query(R2025, limit=50000).rstrip().endswith("limit 10000")
+    )
+
+
+def _select_vars(query: str) -> list[str]:
+    m = re.search(r"^select (.+)$", query, re.MULTILINE | re.IGNORECASE)
+    assert m is not None
+    return re.findall(r"\?(\w+)", m.group(1))
+
+
+def test_collection_objects_query_matches_upstream_select():
+    """Our query is a copy of icoscp_core's; fail if upstream's SELECT moves."""
+    upstream = dataobj_lite_list(None, None, [], False, None, 10, 0)
+    assert _select_vars(_collection_objects_query(R2025)) == _select_vars(upstream)
+
+
+def test_collection_objects_rows_parse_with_upstream_parser():
+    xsd = "http://www.w3.org/2001/XMLSchema#"
+    typed = {
+        "dobj": BoundUri("https://meta.icos-cp.eu/objects/x"),
+        "spec": BoundUri("http://meta.icos-cp.eu/resources/cpmeta/etcL2Fluxnet"),
+        "station": BoundUri("http://meta.icos-cp.eu/resources/stations/ES_BE-Bra"),
+        "samplingHeight": BoundLiteral("2.0", xsd + "float"),
+        "fileName": BoundLiteral("x.zip", None),
+        "size": BoundLiteral("10", xsd + "long"),
+        "submTime": BoundLiteral("2025-01-01T00:00:00Z", xsd + "dateTime"),
+        "timeStart": BoundLiteral("2024-01-01T00:00:00Z", xsd + "dateTime"),
+        "timeEnd": BoundLiteral("2024-12-31T00:00:00Z", xsd + "dateTime"),
+    }
+    row = {v: typed[v] for v in _select_vars(_collection_objects_query(R2025))}
+    assert parse_dobj_lite(row).filename == "x.zip"

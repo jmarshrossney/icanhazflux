@@ -104,8 +104,8 @@ def _collection(
         title=title,
         doi=doi,
         n_objects=n,
-        previous_version=prev,
-        next_versions=nexts or [],
+        previous_versions=(prev,) if prev else (),
+        next_versions=tuple(nexts or ()),
     )
 
 

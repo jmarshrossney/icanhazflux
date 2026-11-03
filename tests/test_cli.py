@@ -309,6 +309,75 @@ def test_objects_ambiguous_doi_lists_uris(wired_collections):
     assert wired_collections.find_kwargs is None
 
 
+def test_collections_superseded_note_survives_search(wired):
+    from icanhazflux.releases import Collection
+
+    base = "https://meta.icos-cp.eu/collections/"
+    wired._collections = [
+        Collection(base + "old", "release 2026-1", "10.1/x", 2, (), (base + "new",)),
+        Collection(
+            base + "new", "release 2026-1 (updated)", "10.1/x", 3, (base + "old",)
+        ),
+    ]
+    result = runner.invoke(
+        app, ["collections", "--search", "release 2026-1"], env={"COLUMNS": "200"}
+    )
+    assert result.stdout.count("superseded") == 1
+    result = runner.invoke(
+        app, ["collections", "--search", "zzz"], env={"COLUMNS": "200"}
+    )
+    assert result.exit_code == 1
+
+
+def test_objects_ambiguous_doi_uses_exception_message(wired_collections):
+    result = runner.invoke(
+        app,
+        ["objects", "--collection", "10.18160/S6TB-567H"],
+        env={"COLUMNS": "300"},
+    )
+    combined = result.stdout + result.stderr
+    assert "is shared by 2 collections" in combined
+    assert "replaces https://meta.icos-cp.eu/collections/old2026" in combined
+
+
+def test_objects_collection_alone_applies_no_type_filter(wired_collections):
+    result = runner.invoke(app, ["objects", "--collection", "10.18160/S6HM-CP8Q"])
+    assert result.exit_code == 0
+    assert wired_collections.find_kwargs["datatype"] is None
+    assert wired_collections.find_kwargs["product"] is None
+    assert "all ecosystem types" in result.stdout
+
+
+def test_objects_collection_alone_warns_on_raw_objects(
+    wired_collections, sample_objects, datatypes
+):
+    from dataclasses import replace
+
+    raw = next(t for t in datatypes if t.data_level == 0)
+    wired_collections._objects = [replace(sample_objects[0], datatype_uri=raw.uri)]
+    result = runner.invoke(app, ["objects", "--collection", "10.18160/S6HM-CP8Q"])
+    assert "PI consultation" in result.stdout
+
+
+def test_objects_site_without_type_still_defaults_to_l2(wired):
+    runner.invoke(app, ["objects", "SE-Htm"])
+    assert wired.find_kwargs["datatype"]
+
+
+@pytest.mark.parametrize(
+    ("args", "warned"),
+    [
+        (["SE-Htm", "--limit", "1"], True),
+        (["SE-Htm", "--limit", "2"], False),
+        (["--collection", "10.18160/S6HM-CP8Q", "--limit", "20000"], False),
+    ],
+)
+def test_objects_warns_when_limit_reached(wired_collections, args, warned):
+    result = runner.invoke(app, ["objects", *args])
+    assert result.exit_code == 0
+    assert ("truncated" in result.stdout) is warned
+
+
 def test_objects_unknown_collection(wired_collections):
     result = runner.invoke(app, ["objects", "--collection", "release 2025-1"])
     assert result.exit_code == 1
